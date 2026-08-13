@@ -138,11 +138,11 @@ const askMessageByRequest = new Map<string, string>(); // requestId -> messageId
 const groupSpeakers = new Map<string, { botId: string; name: string; color: string }>();
 
 bus.subscribe((event: RuntimeEvent) => {
-  broadcast({ kind: "runtime", event });
   const bot = store.botByThread(event.threadId);
   const group = bot ? undefined : store.groupByThread(event.threadId);
   if (!bot && !group) return;
   const speaker = group ? groupSpeakers.get(event.threadId) : undefined;
+  broadcast({ kind: "runtime", event, botId: bot?.id ?? speaker?.botId });
 
   const pushMessage = (m: Omit<Message, "id" | "at">) => {
     const message = store.appendMessage(event.threadId, group && m.role === "bot" ? { ...m, from: speaker } : m);
@@ -475,8 +475,38 @@ async function startTurn(
 // room conversation serialized into its prompt. A member's reply may
 // @mention teammates; those get one chained turn (hop 1), never deeper.
 const groupQueues = new Map<string, Promise<void>>();
+const groupQueueEpoch = new Map<string, number>();
 const GROUP_CONTEXT_MESSAGES = 30;
 const MAX_GROUP_HOPS = 1;
+
+function queueGroupResponders(groupId: string, botIds: string[]) {
+  if (botIds.length === 0) return;
+  const group = store.group(groupId);
+  if (!group) return;
+  store.patchGroup(groupId, { queuedBotIds: [...(group.queuedBotIds ?? []), ...botIds] });
+  broadcastGroup(groupId);
+}
+
+function startQueuedResponder(groupId: string, botId: string) {
+  const group = store.group(groupId);
+  if (!group) return;
+  const queuedBotIds = [...(group.queuedBotIds ?? [])];
+  const index = queuedBotIds.indexOf(botId);
+  if (index >= 0) queuedBotIds.splice(index, 1);
+  store.patchGroup(groupId, { busyBotId: botId, queuedBotIds });
+  broadcastGroup(groupId);
+}
+
+function dropQueuedResponder(groupId: string, botId: string) {
+  const group = store.group(groupId);
+  if (!group) return;
+  const queuedBotIds = [...(group.queuedBotIds ?? [])];
+  const index = queuedBotIds.indexOf(botId);
+  if (index < 0) return;
+  queuedBotIds.splice(index, 1);
+  store.patchGroup(groupId, { queuedBotIds });
+  broadcastGroup(groupId);
+}
 
 function serializeRoomContext(threadId: string, userName: string): string {
   return store
@@ -499,10 +529,15 @@ async function runGroupMemberTurn(
   // bots that already spoke for this user message — "@Scout ask @Pixel"
   // must not run Pixel twice (once chained, once as a direct responder)
   spoken: Set<string> = new Set(),
+  epoch = groupQueueEpoch.get(groupId) ?? 0,
 ): Promise<void> {
   const group = store.group(groupId);
   const bot = store.bot(botId);
-  if (!group || !bot) return;
+  if (!group) return;
+  if (!bot) {
+    dropQueuedResponder(groupId, botId);
+    return;
+  }
   spoken.add(botId);
   const instance = registry.get(bot.modelSelection.instanceId);
   const userName = cfg.profile?.name?.trim() || "User";
@@ -517,8 +552,7 @@ async function runGroupMemberTurn(
     return;
   }
 
-  store.patchGroup(group.id, { busyBotId: bot.id });
-  broadcastGroup(group.id);
+  startQueuedResponder(group.id, bot.id);
   groupSpeakers.set(group.threadId, { botId: bot.id, name: bot.name, color: bot.color });
 
   const roster = group.memberIds
@@ -580,13 +614,14 @@ async function runGroupMemberTurn(
   broadcastGroup(group.id);
 
   // chained mentions: a member's reply can summon teammates — one hop only
-  if (hop < MAX_GROUP_HOPS && replyText.trim()) {
+  if (hop < MAX_GROUP_HOPS && replyText.trim() && (groupQueueEpoch.get(groupId) ?? 0) === epoch) {
     const members = group.memberIds
       .map((id) => store.bot(id))
       .filter((b): b is NonNullable<typeof b> => Boolean(b) && b!.id !== bot.id);
     for (const next of mentionedBots(replyText, members)) {
       if (spoken.has(next.id)) continue;
-      await runGroupMemberTurn(groupId, next.id, hop + 1, spoken);
+      queueGroupResponders(groupId, [next.id]);
+      await runGroupMemberTurn(groupId, next.id, hop + 1, spoken, epoch);
     }
   }
 }
@@ -614,12 +649,17 @@ function startGroupTurn(groupId: string, text: string) {
   }
   if (!responders.length) return;
 
+  const scheduled = responders.filter((responder, index) => responders.findIndex((item) => item.id === responder.id) === index);
+  const epoch = groupQueueEpoch.get(groupId) ?? 0;
+  queueGroupResponders(groupId, scheduled.map((responder) => responder.id));
+
   const prev = groupQueues.get(groupId) ?? Promise.resolve();
   const next = prev.then(async () => {
     const spoken = new Set<string>();
-    for (const responder of responders) {
+    for (const responder of scheduled) {
+      if ((groupQueueEpoch.get(groupId) ?? 0) !== epoch) break;
       if (spoken.has(responder.id)) continue;
-      await runGroupMemberTurn(groupId, responder.id, 0, spoken);
+      await runGroupMemberTurn(groupId, responder.id, 0, spoken, epoch);
     }
   });
   groupQueues.set(groupId, next.catch(() => {}));
@@ -861,6 +901,9 @@ const server = createServer(async (req, res) => {
       if (!group) return json(res, 404, { error: "no such room" });
       const busy = group.busyBotId ? store.bot(group.busyBotId) : undefined;
       const instance = busy ? registry.get(busy.modelSelection.instanceId) : undefined;
+      groupQueueEpoch.set(group.id, (groupQueueEpoch.get(group.id) ?? 0) + 1);
+      store.patchGroup(group.id, { queuedBotIds: [] });
+      broadcastGroup(group.id);
       await instance?.adapter.interruptTurn(group.threadId).catch(() => {});
       return json(res, 200, { ok: true });
     }

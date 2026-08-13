@@ -190,4 +190,20 @@ describe("Store", () => {
     const reloaded = new Store(selection);
     expect(reloaded.bot(bot.id)?.busy).toBe(false);
   });
+
+  it("keeps room activity state transient across restarts", () => {
+    const store = new Store(selection);
+    const first = store.createBot();
+    const second = store.createBot();
+    const group = store.createGroup("Work room", [first.id, second.id]);
+    store.patchGroup(group.id, { busyBotId: first.id, queuedBotIds: [second.id] });
+
+    expect(store.group(group.id)).toMatchObject({ busyBotId: first.id, queuedBotIds: [second.id] });
+    const saved = JSON.parse(readFileSync(join(DATA_DIR, "groups.json"), "utf8"));
+    expect(saved[0]).not.toHaveProperty("busyBotId");
+    expect(saved[0]).not.toHaveProperty("queuedBotIds");
+
+    const reloaded = new Store(selection);
+    expect(reloaded.group(group.id)).toMatchObject({ busyBotId: null, queuedBotIds: [] });
+  });
 });

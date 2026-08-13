@@ -78,6 +78,8 @@ export interface GroupRecord {
   dm?: boolean;
   /** transient: the member currently running a turn (never persisted) */
   busyBotId?: string | null;
+  /** transient: ordered responders waiting behind the active member */
+  queuedBotIds?: string[];
 }
 
 export interface BotRecord {
@@ -177,7 +179,10 @@ export class Store {
     }
     // busy never survives a restart — no turn does either
     for (const b of this.bots) b.busy = false;
-    for (const g of this.groups) g.busyBotId = null;
+    for (const g of this.groups) {
+      g.busyBotId = null;
+      g.queuedBotIds = [];
+    }
   }
 
   private saveBots() {
@@ -185,7 +190,10 @@ export class Store {
   }
 
   private saveGroups() {
-    writeFileSync(GROUPS_FILE, JSON.stringify(this.groups.map(({ busyBotId, ...g }) => g), null, 2));
+    writeFileSync(
+      GROUPS_FILE,
+      JSON.stringify(this.groups.map(({ busyBotId, queuedBotIds, ...g }) => g), null, 2),
+    );
   }
 
   // ── groups ────────────────────────────────────────────────────────────
@@ -208,6 +216,7 @@ export class Store {
       createdAt: Date.now(),
       dm: dm || undefined,
       busyBotId: null,
+      queuedBotIds: [],
     };
     this.groups.unshift(group);
     this.saveGroups();
@@ -221,7 +230,7 @@ export class Store {
     );
   }
 
-  patchGroup(id: string, patch: Partial<Pick<GroupRecord, "name" | "memberIds" | "bulletin" | "unread" | "busyBotId">>): GroupRecord | null {
+  patchGroup(id: string, patch: Partial<Pick<GroupRecord, "name" | "memberIds" | "bulletin" | "unread" | "busyBotId" | "queuedBotIds">>): GroupRecord | null {
     const group = this.group(id);
     if (!group) return null;
     Object.assign(group, patch);

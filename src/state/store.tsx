@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import type { MausColor, MausMotion } from "@/lib/mascot";
+import { foldRoomActivity, type RoomActivityState } from "@/lib/roomActivity";
 
 export type { MausColor } from "@/lib/mascot";
 
@@ -61,6 +62,8 @@ export interface Group {
   /** auto-created bot⇄bot channel (ask_bot exchanges mirror here) */
   dm?: boolean;
   busyBotId?: string | null;
+  /** ordered room members waiting to run after the active member */
+  queuedBotIds?: string[];
   messages: Message[];
 }
 
@@ -579,6 +582,12 @@ export function useStreaming() {
   return useContext(StreamContext);
 }
 
+const RoomActivityContext = createContext<RoomActivityState>({});
+
+export function useRoomActivity(threadId: string) {
+  return useContext(RoomActivityContext)[threadId] ?? {};
+}
+
 const StoreContext = createContext<{
   state: AppState;
   dispatch: React.Dispatch<Action>;
@@ -592,6 +601,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // state is intentionally OUTSIDE the reducer so token frames re-render
   // only StreamContext consumers
   const [stream, setStream] = useState<StreamState>(EMPTY_STREAM);
+  const [roomActivity, setRoomActivity] = useState<RoomActivityState>({});
   const deltaBuffer = useRef(new Map<string, { text: string; reasoning: string }>());
   const deltaFlush = useRef<number | null>(null);
   const clearStream = (threadId: string) =>
@@ -881,6 +891,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         case "runtime": {
           const event = frame.event;
+          setRoomActivity((current) => foldRoomActivity(current, { botId: frame.botId, event }));
           if (event.type === "content.delta") {
             // Batch token deltas per animation frame (t3code-style): a fast
             // stream dispatches once per frame instead of once per token, so
@@ -934,7 +945,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => ({ state, dispatch }), [state, dispatch]);
   return (
     <StoreContext.Provider value={value}>
-      <StreamContext.Provider value={stream}>{children}</StreamContext.Provider>
+      <StreamContext.Provider value={stream}>
+        <RoomActivityContext.Provider value={roomActivity}>{children}</RoomActivityContext.Provider>
+      </StreamContext.Provider>
     </StoreContext.Provider>
   );
 }

@@ -32,6 +32,7 @@ const group = (id: string, threadId: string): Group => ({
   name: id,
   memberIds: [],
   bulletin: "",
+  autoHandoffs: false,
   unread: true,
   createdAt: 1,
   messages: [message(`${id}-message`)],
@@ -89,6 +90,18 @@ describe("room approval cards", () => {
 
     expect(next.groups[0].messages[0].card?.answered).toBe("Allow");
     expect(next.bots[0]).toBe(state.bots[0]);
+  });
+});
+
+describe("automatic room handoffs", () => {
+  it("folds the persisted room preference without changing its transcript", () => {
+    const room = group("room", "room-thread");
+    const state = { ...initialState, groups: [room] };
+
+    const next = reducer(state, { type: "groupPatched", group: { id: room.id, autoHandoffs: true } });
+
+    expect(next.groups[0].autoHandoffs).toBe(true);
+    expect(next.groups[0].messages).toBe(room.messages);
   });
 });
 

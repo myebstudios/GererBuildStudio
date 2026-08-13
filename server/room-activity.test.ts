@@ -58,6 +58,16 @@ posixOnly("room activity runtime", () => {
           environment: { FAKE_ACP_MODE: "permission" },
           config: { cli: fakeCli, fullAuto: false },
         },
+        mentions: {
+          driver: "grokAgent",
+          environment: { FAKE_ACP_MODE: "mention-beta" },
+          config: { cli: fakeCli, fullAuto: false },
+        },
+        happy: {
+          driver: "grokAgent",
+          environment: { FAKE_ACP_MODE: "happy" },
+          config: { cli: fakeCli, fullAuto: false },
+        },
       },
     }));
     child = spawn(process.execPath, [join(serverDirectory, "index.ts")], {
@@ -202,5 +212,32 @@ posixOnly("room activity runtime", () => {
       "cleared responder queue",
     );
     expect(cleared.group.queuedBotIds).toEqual([]);
+  }, 20_000);
+
+  it("runs Markdown-formatted agent handoffs only when the room enables them", async () => {
+    const alpha = (await api("POST", "/api/bots")).body.bot;
+    const beta = (await api("POST", "/api/bots")).body.bot;
+    await api("PATCH", `/api/bots/${alpha.id}`, { name: "Alpha", modelSelection: { instanceId: "mentions", model: "fake-model" } });
+    await api("PATCH", `/api/bots/${beta.id}`, { name: "Beta", modelSelection: { instanceId: "happy", model: "fake-model" } });
+    const group = (await api("POST", "/api/groups", { name: "Automatic room", memberIds: [alpha.id, beta.id] })).body.group;
+    expect(group.autoHandoffs).toBe(false);
+    expect((await api("PATCH", `/api/groups/${group.id}`, { autoHandoffs: "yes" })).status).toBe(400);
+    expect((await api("PATCH", `/api/groups/${group.id}`, { autoHandoffs: true })).body.group.autoHandoffs).toBe(true);
+
+    const start = frames.length;
+    expect((await api("POST", `/api/groups/${group.id}/messages`, { text: "@Alpha begin" })).status).toBe(202);
+    const betaTurn = await waitForFrame(
+      (frame) => frame.kind === "runtime" && frame.botId === beta.id && frame.event.type === "turn.started",
+      "automatic Beta handoff",
+      12_000,
+      start,
+    );
+    expect(betaTurn.event.threadId).toBe(group.threadId);
+    await waitForFrame(
+      (frame) => frame.kind === "runtime" && frame.botId === beta.id && frame.event.type === "turn.completed",
+      "bounded Beta completion",
+      12_000,
+      start,
+    );
   }, 20_000);
 });

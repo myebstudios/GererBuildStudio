@@ -58,6 +58,7 @@ export interface Group {
   name: string;
   memberIds: string[];
   bulletin: string;
+  autoHandoffs: boolean;
   unread: boolean;
   createdAt: number;
   /** auto-created bot⇄bot channel (ask_bot exchanges mirror here) */
@@ -179,7 +180,7 @@ export type Action =
   | { type: "groupDeleted"; groupId: string }
   | { type: "createGroup"; memberIds: string[]; name?: string }
   | { type: "sendGroup"; groupId: string; text: string }
-  | { type: "patchGroup"; groupId: string; patch: Partial<Pick<Group, "name" | "bulletin" | "memberIds">> }
+  | { type: "patchGroup"; groupId: string; patch: Partial<Pick<Group, "name" | "bulletin" | "memberIds" | "autoHandoffs">> }
   | { type: "deleteGroup"; groupId: string }
   | { type: "clearChat"; threadId: string }
   | { type: "threadCleared"; threadId: string }

@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { mentionedBots } from "./store.ts";
+import { automaticHandoffBots, mentionedBots } from "./store.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
@@ -40,9 +40,17 @@ describe("mentionedBots", () => {
   it("dedupes repeats and collects multiple bots", () => {
     expect(mentionedBots("@Milind and @New Bot and @Milind", peers).map((b) => b.id)).toEqual(["3", "1"]);
   });
+  it("matches mentions wrapped in common Markdown punctuation", () => {
+    expect(mentionedBots("**@Milind** and [@New Bot]", peers).map((b) => b.id)).toEqual(["3", "1"]);
+  });
   it("ignores emails, hidden bots, and mid-word @", () => {
     expect(mentionedBots("mail milind@milind.dev please", peers)).toEqual([]);
+    expect(mentionedBots("prefix@Milind and path/@New Bot", peers)).toEqual([]);
     expect(mentionedBots("@Ghost around?", peers)).toEqual([]);
+  });
+  it("gates automatic handoffs without changing mention resolution", () => {
+    expect(automaticHandoffBots(false, "**@Milind**", peers)).toEqual([]);
+    expect(automaticHandoffBots(true, "**@Milind**", peers).map((bot) => bot.id)).toEqual(["3"]);
   });
 });
 

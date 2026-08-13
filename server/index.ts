@@ -16,7 +16,7 @@ import type { RuntimeEvent } from "./contracts.ts";
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
-import { mentionedBots, Store, type Message } from "./store.ts";
+import { automaticHandoffBots, mentionedBots, Store, type Message } from "./store.ts";
 import { readRegisteredProjects, resolveProjectContext } from "./projects.ts";
 import {
   TaskConflictError,
@@ -650,11 +650,12 @@ async function runGroupMemberTurn(
   broadcastGroup(group.id);
 
   // chained mentions: a member's reply can summon teammates — one hop only
-  if (hop < MAX_GROUP_HOPS && replyText.trim() && (groupQueueEpoch.get(groupId) ?? 0) === epoch) {
+  const latestGroup = store.group(groupId);
+  if (hop < MAX_GROUP_HOPS && replyText.trim() && latestGroup && (groupQueueEpoch.get(groupId) ?? 0) === epoch) {
     const members = group.memberIds
       .map((id) => store.bot(id))
       .filter((b): b is NonNullable<typeof b> => Boolean(b) && b!.id !== bot.id);
-    for (const next of mentionedBots(replyText, members)) {
+    for (const next of automaticHandoffBots(latestGroup.autoHandoffs, replyText, members)) {
       if (spoken.has(next.id)) continue;
       queueGroupResponders(groupId, [next.id]);
       await runGroupMemberTurn(groupId, next.id, hop + 1, spoken, epoch);
@@ -1049,6 +1050,10 @@ const server = createServer(async (req, res) => {
       const patch: Record<string, unknown> = {};
       for (const key of ["name", "bulletin", "unread"] as const) {
         if (body[key] !== undefined) patch[key] = body[key];
+      }
+      if (body.autoHandoffs !== undefined) {
+        if (typeof body.autoHandoffs !== "boolean") return json(res, 400, { error: "autoHandoffs must be a boolean" });
+        patch.autoHandoffs = body.autoHandoffs;
       }
       if (Array.isArray(body.memberIds)) {
         const ids = body.memberIds.filter((id: unknown): id is string => typeof id === "string" && Boolean(store.bot(id)));

@@ -71,6 +71,8 @@ export interface GroupRecord {
   name: string;
   memberIds: string[];
   bulletin: string;
+  /** User-controlled: agent-authored @mentions may queue one teammate hop. */
+  autoHandoffs: boolean;
   unread: boolean;
   createdAt: number;
   /** true for auto-created bot⇄bot channels (ask_bot exchanges live here;
@@ -137,12 +139,20 @@ export function mentionedBots<T extends { name: string; hidden?: boolean }>(text
   const found: T[] = [];
   let at = -1;
   while ((at = lower.indexOf("@", at + 1)) !== -1) {
-    if (at > 0 && !/\s/.test(text[at - 1])) continue; // user@host, not a tag
+    if (at > 0 && !/[\s*_~([>{]/.test(text[at - 1])) continue; // user@host and mid-word @ are not tags
     const rest = lower.slice(at + 1);
     const hit = candidates.find((p) => rest.startsWith(p.name.toLowerCase()));
     if (hit && !found.includes(hit)) found.push(hit);
   }
   return found;
+}
+
+export function automaticHandoffBots<T extends { name: string; hidden?: boolean }>(
+  enabled: boolean,
+  text: string,
+  peers: T[],
+): T[] {
+  return enabled ? mentionedBots(text, peers) : [];
 }
 
 const onboardingCard = (): OptionCardData => ({
@@ -180,6 +190,7 @@ export class Store {
     // busy never survives a restart — no turn does either
     for (const b of this.bots) b.busy = false;
     for (const g of this.groups) {
+      g.autoHandoffs = g.autoHandoffs === true;
       g.busyBotId = null;
       g.queuedBotIds = [];
     }
@@ -212,6 +223,7 @@ export class Store {
       name,
       memberIds,
       bulletin: "",
+      autoHandoffs: false,
       unread: false,
       createdAt: Date.now(),
       dm: dm || undefined,
@@ -230,7 +242,7 @@ export class Store {
     );
   }
 
-  patchGroup(id: string, patch: Partial<Pick<GroupRecord, "name" | "memberIds" | "bulletin" | "unread" | "busyBotId" | "queuedBotIds">>): GroupRecord | null {
+  patchGroup(id: string, patch: Partial<Pick<GroupRecord, "name" | "memberIds" | "bulletin" | "autoHandoffs" | "unread" | "busyBotId" | "queuedBotIds">>): GroupRecord | null {
     const group = this.group(id);
     if (!group) return null;
     Object.assign(group, patch);

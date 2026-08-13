@@ -6,6 +6,7 @@
 // turn. Failure modes mirror how real ACP agents misbehave:
 //
 //   FAKE_ACP_MODE   happy (default) | exit-early | hang | no-auth | permission
+//                   | mention-beta (reply with a Markdown-formatted @Beta)
 //                   | ask-peer (spawn the injected "agents" MCP server from
 //                     session/new's mcpServers, call list_bots + ask_bot on a
 //                     peer, and reply with what the peer said — the comms e2e)
@@ -152,6 +153,11 @@ function handle(msg: any) {
       }
       const complete = () =>
         result(msg.id, { stopReason: "end_turn", _meta: { inputTokens: 10, outputTokens: 5 } });
+      if (mode === "mention-beta") {
+        out({ jsonrpc: "2.0", method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk", content: { text: "**@Beta** take the next step." } } } });
+        complete();
+        return;
+      }
       if (mode === "echo-context") {
         const prompt = Array.isArray(msg.params?.prompt)
           ? msg.params.prompt.map((part: any) => part?.text ?? "").join("")

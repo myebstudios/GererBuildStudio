@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Circle, Clock3, ListTodo, Loader2, ShieldAlert, X, XCircle } from "lucide-react";
+import { Check, Circle, Clock3, ListTodo, Loader2, ShieldAlert, Square, X, XCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { RoomActivityEntry, RoomActivityStatus } from "@/lib/roomActivity";
-import { useRoomActivity, type Bot, type Group, type Message } from "@/state/store";
+import { useRoomActivity, useStore, type Bot, type Group, type Message } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { normalizeState } from "@/lib/mascot";
 
@@ -14,6 +14,7 @@ const statusMeta: Record<DisplayStatus, { label: string; className: string }> = 
   running: { label: "Running", className: "bg-accent/10 text-accent" },
   approval: { label: "Needs input", className: "bg-warning/10 text-warning" },
   completed: { label: "Completed", className: "bg-success/10 text-success" },
+  cancelled: { label: "Stopped", className: "bg-raised text-ink-secondary" },
   failed: { label: "Failed", className: "bg-danger/10 text-danger" },
 };
 
@@ -29,6 +30,7 @@ function EntryIcon({ entry }: { entry: Pick<RoomActivityEntry, "status" | "kind"
   if (entry.status === "running") return <Loader2 size={13} className="animate-spin text-accent" />;
   if (entry.status === "waiting" || entry.kind === "approval") return <ShieldAlert size={13} className="text-warning" />;
   if (entry.status === "failed") return <XCircle size={13} className="text-danger" />;
+  if (entry.status === "cancelled") return <Square size={11} className="fill-current text-ink-secondary" />;
   return <Check size={13} className="text-success" />;
 }
 
@@ -62,6 +64,7 @@ function AgentActivityCard({
   group: Group;
   now: number;
 }) {
+  const { dispatch } = useStore();
   const roomActivity = useRoomActivity(group.threadId);
   const live = roomActivity[bot.id];
   const queueIndex = (group.queuedBotIds ?? []).indexOf(bot.id);
@@ -80,6 +83,7 @@ function AgentActivityCard({
   }, [bot.id, group.messages, live?.entries]);
   const duration = elapsed(live?.startedAt, now);
   const meta = statusMeta[status];
+  const stoppable = status === "queued" || status === "running" || status === "approval";
 
   return (
     <article className="rounded-xl border border-hairline/40 bg-card p-3">
@@ -97,9 +101,20 @@ function AgentActivityCard({
             {status === "queued" ? `Position ${queueIndex + 1}` : duration && (status === "running" || status === "approval") ? duration : bot.title || "Room member"}
           </div>
         </div>
-        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium", meta.className)}>
-          {meta.label}
-        </span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", meta.className)}>{meta.label}</span>
+          {stoppable && (
+            <button
+              type="button"
+              onClick={() => dispatch({ type: "stopGroupActivity", groupId: group.id, botId: bot.id })}
+              aria-label={`Stop ${bot.name}'s activity`}
+              title={status === "queued" ? "Remove from queue" : "Stop activity"}
+              className="flex size-6 items-center justify-center rounded-md text-ink-secondary hover:bg-danger/10 hover:text-danger"
+            >
+              <Square size={11} className="fill-current" />
+            </button>
+          )}
+        </div>
       </div>
 
       {current && (

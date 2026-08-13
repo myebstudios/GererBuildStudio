@@ -28,8 +28,8 @@ posixOnly("room activity runtime", () => {
     return { status: response.status, body: await response.json() };
   };
 
-  const waitForFrame = (predicate: (frame: any) => boolean, label: string, timeoutMs = 12_000) => {
-    const existing = frames.find(predicate);
+  const waitForFrame = (predicate: (frame: any) => boolean, label: string, timeoutMs = 12_000, after = 0) => {
+    const existing = frames.slice(after).find(predicate);
     if (existing) return Promise.resolve(existing);
     return new Promise<any>((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -149,6 +149,13 @@ posixOnly("room activity runtime", () => {
     );
     expect(approval.botId).toBe(alpha.id);
 
+    expect((await api("POST", `/api/groups/${group.id}/activities/${beta.id}/stop`)).status).toBe(200);
+    const betaRemoved = await waitForFrame(
+      (frame) => frame.kind === "group" && frame.group.id === group.id && !frame.group.queuedBotIds?.includes(beta.id),
+      "Beta removed from the room queue",
+    );
+    expect(betaRemoved.group.queuedBotIds).not.toContain(beta.id);
+
     const prompt = await waitForFrame(
       (frame) => frame.kind === "message" && frame.threadId === group.threadId && frame.message.kind === "options",
       "room approval card",
@@ -166,6 +173,28 @@ posixOnly("room activity runtime", () => {
       (frame) => frame.kind === "runtime" && frame.event.type === "request.resolved" && frame.event.requestId === approval.event.requestId,
       "resolved room approval",
     );
+
+    await waitForFrame(
+      (frame) => frame.kind === "runtime" && frame.event.type === "turn.completed" && frame.event.threadId === group.threadId,
+      "completed first room turn",
+    );
+
+    const secondStart = frames.length;
+    expect((await api("POST", `/api/groups/${group.id}/messages`, { text: "@Alpha run another check" })).status).toBe(202);
+    await waitForFrame(
+      (frame) => frame.kind === "runtime" && frame.event.type === "request.opened" && frame.event.threadId === group.threadId,
+      "second room approval request",
+      12_000,
+      secondStart,
+    );
+    expect((await api("POST", `/api/groups/${group.id}/activities/${alpha.id}/stop`)).status).toBe(200);
+    const stopped = await waitForFrame(
+      (frame) => frame.kind === "runtime" && frame.event.type === "turn.completed" && frame.event.threadId === group.threadId,
+      "stopped room turn",
+      12_000,
+      secondStart,
+    );
+    expect(stopped.event.stopReason).toBe("cancelled");
 
     await api("POST", `/api/groups/${group.id}/interrupt`);
     const cleared = await waitForFrame(

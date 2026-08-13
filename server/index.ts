@@ -492,6 +492,7 @@ async function startTurn(
 // @mention teammates; those get one chained turn (hop 1), never deeper.
 const groupQueues = new Map<string, Promise<void>>();
 const groupQueueEpoch = new Map<string, number>();
+const GROUP_TURN_TIMEOUT_MS = Math.max(1_000, Number(process.env.OMB_GROUP_TURN_TIMEOUT_MS) || 5 * 60_000);
 const GROUP_CONTEXT_MESSAGES = 30;
 const MAX_GROUP_HOPS = 1;
 
@@ -597,12 +598,15 @@ async function runGroupMemberTurn(
   // run the turn and wait for it to settle, folding the reply text so a
   // chained @mention can be routed afterwards
   let replyText = "";
+  let timedOut = false;
   await new Promise<void>((resolve) => {
     let done = false;
+    let interruptFallback: ReturnType<typeof setTimeout> | undefined;
     const finish = () => {
       if (done) return;
       done = true;
       clearTimeout(timer);
+      if (interruptFallback) clearTimeout(interruptFallback);
       unsub();
       resolve();
     };
@@ -611,7 +615,14 @@ async function runGroupMemberTurn(
       if (e.type === "item.completed" && e.itemType === "assistant_text") replyText += `\n${e.text}`;
       else if (e.type === "turn.completed") finish();
     });
-    const timer = setTimeout(finish, 5 * 60_000);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      void instance.adapter.interruptTurn(group.threadId)
+        .catch(() => {})
+        .finally(() => {
+          interruptFallback = setTimeout(finish, 6_000);
+        });
+    }, GROUP_TURN_TIMEOUT_MS);
     instance.adapter
       .sendTurn({ threadId: group.threadId, text, system, cwd: projectContext.cwd })
       .catch((err) => {
@@ -625,6 +636,15 @@ async function runGroupMemberTurn(
         finish();
       });
   });
+  if (timedOut) {
+    const failure = store.appendMessage(group.threadId, {
+      role: "bot",
+      kind: "activity",
+      from: { botId: bot.id, name: bot.name, color: bot.color },
+      tool: { name: "error: activity timed out and was stopped", ok: false },
+    });
+    broadcast({ kind: "message", threadId: group.threadId, message: failure });
+  }
   groupSpeakers.delete(group.threadId);
   store.patchGroup(group.id, { busyBotId: null, unread: true });
   broadcastGroup(group.id);
@@ -675,6 +695,8 @@ function startGroupTurn(groupId: string, text: string) {
     for (const responder of scheduled) {
       if ((groupQueueEpoch.get(groupId) ?? 0) !== epoch) break;
       if (spoken.has(responder.id)) continue;
+      const latest = store.group(groupId);
+      if (!latest?.queuedBotIds?.includes(responder.id)) continue;
       await runGroupMemberTurn(groupId, responder.id, 0, spoken, epoch);
     }
   });
@@ -1064,6 +1086,23 @@ const server = createServer(async (req, res) => {
       store.patchGroup(group.id, { queuedBotIds: [] });
       broadcastGroup(group.id);
       await instance?.adapter.interruptTurn(group.threadId).catch(() => {});
+      return json(res, 200, { ok: true });
+    }
+    m = path.match(/^\/api\/groups\/([\w-]+)\/activities\/([\w-]+)\/stop$/);
+    if (m && method === "POST") {
+      const group = store.group(m[1]);
+      const bot = store.bot(m[2]);
+      if (!group || !bot || !group.memberIds.includes(bot.id)) return json(res, 404, { error: "no such room activity" });
+      if (group.queuedBotIds?.includes(bot.id)) {
+        dropQueuedResponder(group.id, bot.id);
+        return json(res, 200, { ok: true });
+      }
+      if (group.busyBotId && group.busyBotId !== bot.id) {
+        return json(res, 409, { error: "another agent owns the active room turn" });
+      }
+      const instance = registry.get(bot.modelSelection.instanceId);
+      if (!instance) return json(res, 409, { error: "provider unavailable" });
+      await instance.adapter.interruptTurn(group.threadId).catch(() => {});
       return json(res, 200, { ok: true });
     }
 

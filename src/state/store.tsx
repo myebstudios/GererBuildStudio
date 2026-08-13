@@ -185,6 +185,7 @@ export type Action =
   | { type: "threadCleared"; threadId: string }
   | { type: "toggleReaction"; threadId: string; messageId: string; emoji: string }
   | { type: "interruptGroup"; groupId: string }
+  | { type: "stopGroupActivity"; groupId: string; botId: string }
   | { type: "instances"; instances: InstanceInfo[] }
   | { type: "configStatus"; config: ConfigStatus }
   | { type: "select"; id: string }
@@ -596,6 +597,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case "deleteGroup":
     case "clearChat":
     case "interruptGroup":
+    case "stopGroupActivity":
       return state;
   }
 }
@@ -895,6 +897,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         case "interruptGroup":
           api(`/api/groups/${action.groupId}/interrupt`, { method: "POST" }).catch(showError);
+          break;
+        case "stopGroupActivity":
+          api(`/api/groups/${action.groupId}/activities/${action.botId}/stop`, { method: "POST" }).catch(showError);
           break;
         case "updateBot": {
           const timers = patchTimers.current;

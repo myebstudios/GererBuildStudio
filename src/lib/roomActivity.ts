@@ -1,5 +1,5 @@
-export type RoomActivityStatus = "waiting" | "running" | "approval" | "completed" | "failed";
-export type RoomActivityEntryStatus = "running" | "waiting" | "completed" | "failed";
+export type RoomActivityStatus = "waiting" | "running" | "approval" | "completed" | "cancelled" | "failed";
+export type RoomActivityEntryStatus = "running" | "waiting" | "completed" | "cancelled" | "failed";
 
 export interface RoomActivityEntry {
   id: string;
@@ -40,6 +40,7 @@ interface RuntimeEventLike {
   summary?: string;
   message?: string;
   ok?: boolean;
+  stopReason?: string | null;
 }
 
 const HISTORY_LIMIT = 12;
@@ -57,10 +58,10 @@ function upsertEntry(entries: RoomActivityEntry[], entry: RoomActivityEntry): Ro
     .slice(0, HISTORY_LIMIT);
 }
 
-function settleOpenEntries(entries: RoomActivityEntry[], ok: boolean, at: number): RoomActivityEntry[] {
+function settleOpenEntries(entries: RoomActivityEntry[], status: "completed" | "cancelled" | "failed", at: number): RoomActivityEntry[] {
   return entries.map((entry) =>
     entry.status === "running" || entry.status === "waiting"
-      ? { ...entry, status: ok ? "completed" : "failed", updatedAt: at }
+      ? { ...entry, status, updatedAt: at }
       : entry,
   );
 }
@@ -157,16 +158,18 @@ export function foldRoomActivity(
         }),
       };
       break;
-    case "turn.completed":
+    case "turn.completed": {
+      const status = event.stopReason === "cancelled" ? "cancelled" : event.ok === false ? "failed" : "completed";
       next = {
         ...current,
-        status: event.ok === false ? "failed" : "completed",
+        status,
         turnId: undefined,
         startedAt: undefined,
         updatedAt: at,
-        entries: settleOpenEntries(current.entries, event.ok !== false, at),
+        entries: settleOpenEntries(current.entries, status, at),
       };
       break;
+    }
     default:
       return state;
   }

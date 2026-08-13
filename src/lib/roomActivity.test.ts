@@ -28,6 +28,15 @@ describe("foldRoomActivity", () => {
     expect(state["room-1"]["bot-1"].status).toBe("running");
   });
 
+  it("settles a waiting approval when its turn is cancelled", () => {
+    let state = foldRoomActivity({}, frame("bot-1", { type: "request.opened", requestId: "ask-1", summary: "Run deployment?" }));
+
+    state = foldRoomActivity(state, frame("bot-1", { type: "turn.completed", ok: true, stopReason: "cancelled" }));
+
+    expect(state["room-1"]["bot-1"].status).toBe("cancelled");
+    expect(state["room-1"]["bot-1"].entries[0].status).toBe("cancelled");
+  });
+
   it("isolates agents and ignores unattributed events", () => {
     const first = foldRoomActivity({}, frame("bot-1", { type: "turn.started", turnId: "one" }));
     const second = foldRoomActivity(first, frame("bot-2", { type: "turn.started", turnId: "two" }));

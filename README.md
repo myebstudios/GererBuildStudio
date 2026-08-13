@@ -123,7 +123,19 @@ Secrets are write-only: the UI only ever sees "configured" flags.
 **Also in the box:** streaming replies with tool-run activity chips · native macOS dictation from the
 composer mic (on-device Apple speech recognition — desktop app) · SupaMaus cursor mascots with role-aware
 expressions · screenshots of the bot's work folded into the transcript · a local Projects screen for adding
-existing folders, creating new workspaces, and cloning GitHub repositories to a chosen path.
+existing folders, creating new workspaces, and cloning GitHub repositories to a chosen path · stable
+`#project` references that give agents trusted workspace context from chats, room bulletins, and bot descriptions.
+
+### Refer to projects and bots
+
+Every registered project gets a stable handle shown on its Projects card. Type `#` in a message, room
+bulletin, or bot description to search for it. For example, `Review the tests in #openmausbot` gives the
+agent that project's canonical folder and uses it as the turn's working directory when it is the only
+project referenced. Unknown hashtags remain plain text, and multiple project references provide paths
+without choosing an ambiguous working directory.
+
+Rooms also support `@bot` routing, so the two can be combined: `@Scout audit #openmausbot` brings Scout into
+the room with the registered project as context.
 
 ## How it works
 
@@ -159,7 +171,7 @@ flowchart LR
 | API | `server/index.ts` | Bots, turns, approvals, model catalog, computer lifecycle, connectors, config — HTTP + SSE. |
 | App | `src/` | The chat shell. Server-backed store, one reducer, zero client-side transports. |
 | Desktop | `electron/` | macOS + Windows shells: dictation helper (SFSpeechRecognizer, macOS only), local screen capture, CUA bridge (macOS only). |
-| Projects | `electron/projects.mjs`, `src/components/ProjectsScreen.tsx` | Desktop-only local folder registry, directory creation, and shell-free GitHub cloning. |
+| Projects | `electron/projects.mjs`, `server/projects.ts`, `src/state/projects.tsx` | Desktop-only local folder registry, stable `#project` handles, trusted turn context, directory creation, and shell-free GitHub cloning. |
 
 ## Quick start
 

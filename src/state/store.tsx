@@ -14,6 +14,7 @@ import {
 } from "react";
 import type { MausColor, MausMotion } from "@/lib/mascot";
 import { clearRoomActivity, foldRoomActivity, type RoomActivityState } from "@/lib/roomActivity";
+import type { TaskProject, TaskRecord } from "@/lib/taskBoard";
 
 export type { MausColor } from "@/lib/mascot";
 
@@ -155,6 +156,10 @@ export interface AppState {
   computerOpen: boolean;
   appSettingsOpen: boolean;
   projectsOpen: boolean;
+  taskBoardOpen: boolean;
+  tasks: TaskRecord[];
+  taskProjects: TaskProject[];
+  tasksLoaded: boolean;
   /** latest live frame of a bot's computer, per botId */
   screens: Record<string, { png: string; mime: string }>;
   /** bots whose cloud computer is being provisioned */
@@ -208,6 +213,10 @@ export type Action =
   | { type: "toggleComputer"; open?: boolean }
   | { type: "toggleAppSettings"; open?: boolean }
   | { type: "toggleProjects"; open?: boolean }
+  | { type: "toggleTaskBoard"; open?: boolean }
+  | { type: "hydrateTasks"; tasks: TaskRecord[]; projects: TaskProject[] }
+  | { type: "taskUpserted"; task: TaskRecord }
+  | { type: "taskDeleted"; taskId: string }
   | {
       type: "updateBot";
       botId: string;
@@ -255,6 +264,19 @@ export function reducer(state: AppState, action: Action): AppState {
         state.selectedId && known(state.selectedId) ? state.selectedId : (action.bots[0]?.id ?? "");
       return { ...state, bots: action.bots, groups: action.groups, selectedId };
     }
+    case "hydrateTasks":
+      return { ...state, tasks: action.tasks, taskProjects: action.projects, tasksLoaded: true };
+    case "taskUpserted": {
+      const exists = state.tasks.some((task) => task.id === action.task.id);
+      return {
+        ...state,
+        tasks: exists
+          ? state.tasks.map((task) => task.id === action.task.id ? action.task : task)
+          : [...state.tasks, action.task],
+      };
+    }
+    case "taskDeleted":
+      return { ...state, tasks: state.tasks.filter((task) => task.id !== action.taskId) };
     case "groupPatched": {
       const exists = state.groups.some((g) => g.id === action.group.id);
       const groups = exists
@@ -289,11 +311,12 @@ export function reducer(state: AppState, action: Action): AppState {
           ...state,
           selectedId: action.id,
           projectsOpen: false,
+          taskBoardOpen: false,
           groups: state.groups.map((g) => (g.id === action.id ? { ...g, unread: false } : g)),
         };
       }
       return updateBot(
-        withMascotMotion({ ...state, selectedId: action.id, projectsOpen: false }, action.id, "switch"),
+        withMascotMotion({ ...state, selectedId: action.id, projectsOpen: false, taskBoardOpen: false }, action.id, "switch"),
         action.id,
         (b) => ({ ...b, unread: false }),
       );
@@ -312,6 +335,8 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         bots: [action.bot, ...state.bots],
         selectedId: action.bot.id,
+        projectsOpen: false,
+        taskBoardOpen: false,
       }, action.bot.id, "arrive");
     case "deleteBot": {
       const bots = state.bots.filter((b) => b.id !== action.botId);
@@ -441,11 +466,12 @@ export function reducer(state: AppState, action: Action): AppState {
         computerOpen: open ? false : state.computerOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
         projectsOpen: open ? false : state.projectsOpen,
+        taskBoardOpen: open ? false : state.taskBoardOpen,
       };
     }
     case "togglePlugins": {
       const open = action.open ?? !state.pluginsOpen;
-      return { ...state, pluginsOpen: open, projectsOpen: open ? false : state.projectsOpen };
+      return { ...state, pluginsOpen: open, projectsOpen: open ? false : state.projectsOpen, taskBoardOpen: open ? false : state.taskBoardOpen };
     }
     case "toggleComputer": {
       const open = action.open ?? !state.computerOpen;
@@ -455,6 +481,7 @@ export function reducer(state: AppState, action: Action): AppState {
         settingsOpen: open ? false : state.settingsOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
         projectsOpen: open ? false : state.projectsOpen,
+        taskBoardOpen: open ? false : state.taskBoardOpen,
       };
     }
     case "toggleAppSettings": {
@@ -466,6 +493,7 @@ export function reducer(state: AppState, action: Action): AppState {
         computerOpen: open ? false : state.computerOpen,
         pluginsOpen: open ? false : state.pluginsOpen,
         projectsOpen: open ? false : state.projectsOpen,
+        taskBoardOpen: open ? false : state.taskBoardOpen,
       };
     }
     case "toggleProjects": {
@@ -473,6 +501,19 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         projectsOpen: open,
+        settingsOpen: open ? false : state.settingsOpen,
+        computerOpen: open ? false : state.computerOpen,
+        appSettingsOpen: open ? false : state.appSettingsOpen,
+        pluginsOpen: open ? false : state.pluginsOpen,
+        taskBoardOpen: open ? false : state.taskBoardOpen,
+      };
+    }
+    case "toggleTaskBoard": {
+      const open = action.open ?? !state.taskBoardOpen;
+      return {
+        ...state,
+        taskBoardOpen: open,
+        projectsOpen: open ? false : state.projectsOpen,
         settingsOpen: open ? false : state.settingsOpen,
         computerOpen: open ? false : state.computerOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
@@ -562,6 +603,10 @@ export const initialState: AppState = {
   computerOpen: false,
   appSettingsOpen: false,
   projectsOpen: false,
+  taskBoardOpen: false,
+  tasks: [],
+  taskProjects: [],
+  tasksLoaded: false,
   screens: {},
   provisioning: {},
   connected: false,
@@ -570,13 +615,25 @@ export const initialState: AppState = {
 };
 
 // ── API client ─────────────────────────────────────────────────────────
+export class ApiError extends Error {
+  status: number;
+  body: any;
+
+  constructor(status: number, body: any, fallback: string) {
+    super(body.error ?? fallback);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export async function api(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(path, {
     headers: { "content-type": "application/json" },
     ...init,
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+  if (!res.ok) throw new ApiError(res.status, body, `${res.status} ${res.statusText}`);
   return body;
 }
 
@@ -857,6 +914,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       api("/api/config")
         .then((config) => alive && rawDispatch({ type: "configStatus", config }))
         .catch(() => {});
+      api("/api/tasks")
+        .then(({ tasks, projects }) => alive && rawDispatch({ type: "hydrateTasks", tasks, projects }))
+        .catch(() => {});
     };
     loadAll();
 
@@ -921,6 +981,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         case "group.deleted":
           rawDispatch({ type: "groupDeleted", groupId: frame.groupId });
+          break;
+        case "task.created":
+        case "task.updated":
+          rawDispatch({ type: "taskUpserted", task: frame.task });
+          break;
+        case "task.deleted":
+          rawDispatch({ type: "taskDeleted", taskId: frame.taskId });
           break;
         case "runtime": {
           const event = frame.event;

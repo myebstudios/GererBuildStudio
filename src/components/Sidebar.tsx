@@ -21,6 +21,7 @@ import {
   Settings,
   Puzzle,
   FolderKanban,
+  ListTodo,
   Trash2,
   Users,
 } from "lucide-react";
@@ -723,6 +724,21 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="px-3 pb-3 pt-2">
+        <button
+          onClick={() => dispatch({ type: "toggleTaskBoard", open: true })}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left",
+            state.taskBoardOpen ? "bg-raised" : "hover:bg-raised/50",
+          )}
+        >
+          <ListTodo size={20} className={state.taskBoardOpen ? "text-accent" : "text-ink-secondary"} />
+          <span className="min-w-0 flex-1 text-[14px] text-ink">Task Board</span>
+          {state.tasks.filter((task) => task.status !== "done").length > 0 && (
+            <span className="rounded-full bg-raised px-1.5 py-0.5 text-[10px] text-ink-secondary">
+              {state.tasks.filter((task) => task.status !== "done").length}
+            </span>
+          )}
+        </button>
         <button
           onClick={() => dispatch({ type: "toggleProjects", open: true })}
           className={cn(

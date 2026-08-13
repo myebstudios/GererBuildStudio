@@ -12,6 +12,7 @@ import { ComputerPanel } from "@/components/ComputerPanel";
 import { AppSettingsPanel } from "@/components/AppSettingsPanel";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { ProjectsScreen } from "@/components/ProjectsScreen";
+import { TaskBoardScreen } from "@/components/TaskBoardScreen";
 import { ProjectsProvider } from "@/state/projects";
 
 function Shell() {
@@ -54,7 +55,9 @@ function Shell() {
       <UpdateBanner />
       <div className="relative flex min-h-0 flex-1">
       <Sidebar />
-      {state.projectsOpen ? (
+      {state.taskBoardOpen ? (
+        <TaskBoardScreen />
+      ) : state.projectsOpen ? (
         <ProjectsScreen />
       ) : group ? (
         <GroupView key={group.id} group={group} />

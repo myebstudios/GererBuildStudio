@@ -165,6 +165,13 @@ describe("harness HTTP API", () => {
     streamAbort.abort();
   });
 
+  it("keeps agent task routes behind the internal bearer token", async () => {
+    const listed = await api("GET", "/api/internal/tasks");
+    expect(listed).toEqual({ status: 401, body: { error: "unauthorized" } });
+    const created = await api("POST", "/api/internal/tasks", { title: "Spoofed agent task" });
+    expect(created).toEqual({ status: 401, body: { error: "unauthorized" } });
+  });
+
   it("describes the configured fleet, shadows included", async () => {
     const { status, body } = await api("GET", "/api/instances");
     expect(status).toBe(200);

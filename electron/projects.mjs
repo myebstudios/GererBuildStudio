@@ -244,7 +244,17 @@ export class ProjectService {
 
   async assertRegistered(projectPath) {
     const records = await this.readRecords();
-    const match = records.find((record) => pathKey(record.path) === pathKey(String(projectPath ?? "")));
+    const requestedPath = String(projectPath ?? "");
+    let canonicalPath = requestedPath;
+    try {
+      canonicalPath = await realpath(requestedPath);
+    } catch {
+      // A missing registered folder is handled below with a more useful error.
+    }
+    const match = records.find(
+      (record) =>
+        pathKey(record.path) === pathKey(canonicalPath) || pathKey(record.path) === pathKey(requestedPath),
+    );
     if (!match) throw projectError("That project is not registered.");
     if (!(await isDirectory(match.path))) throw projectError("The project folder no longer exists.");
     return match;

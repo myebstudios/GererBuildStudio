@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { ProjectRecord } from "@/types/ogb";
 import { cn } from "@/lib/cn";
+import { useProjects } from "@/state/projects";
 
 type AddMode = "choose" | "create" | "clone";
 
@@ -272,39 +273,15 @@ function AddProjectModal({
 
 export function ProjectsScreen() {
   const projectsApi = window.ogb?.projects;
-  const [projects, setProjects] = useState<ProjectRecord[] | null>(null);
+  const { available, projects, error, refreshing, refresh, upsert, open } = useProjects();
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async (quiet = false) => {
-    if (!projectsApi) {
-      setProjects([]);
-      return;
-    }
-    if (quiet) setRefreshing(true);
-    else setProjects(null);
-    setError(null);
-    try {
-      setProjects(await projectsApi.list());
-    } catch (reason) {
-      setError(errorMessage(reason));
-      setProjects([]);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [projectsApi]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const visibleProjects = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return projects ?? [];
     return (projects ?? []).filter((project) =>
-      `${project.name} ${project.path} ${project.repositoryUrl ?? ""}`.toLowerCase().includes(needle),
+      `${project.name} #${project.mention} ${project.path} ${project.repositoryUrl ?? ""}`.toLowerCase().includes(needle),
     );
   }, [projects, query]);
 
@@ -323,8 +300,8 @@ export function ProjectsScreen() {
         </div>
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as CSSProperties}>
           <button
-            onClick={() => void load(true)}
-            disabled={!projectsApi || refreshing}
+            onClick={() => void refresh(true)}
+            disabled={!available || refreshing}
             className="rounded-lg p-2 text-ink-secondary hover:bg-raised hover:text-ink disabled:opacity-40"
             title="Refresh projects"
           >
@@ -332,7 +309,7 @@ export function ProjectsScreen() {
           </button>
           <button
             onClick={() => setAdding(true)}
-            disabled={!projectsApi}
+            disabled={!available}
             className="flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-40"
           >
             <Plus size={16} /> Add project
@@ -341,7 +318,7 @@ export function ProjectsScreen() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-        {!projectsApi ? (
+        {!available ? (
           <div className="mx-auto mt-16 max-w-md rounded-2xl border border-hairline/50 bg-card p-8 text-center">
             <FolderKanban size={32} className="mx-auto text-accent" />
             <h2 className="mt-4 text-[16px] font-semibold text-ink">Open Projects in the desktop app</h2>
@@ -404,13 +381,14 @@ export function ProjectsScreen() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <h2 className="truncate text-[14px] font-semibold text-ink">{project.name}</h2>
+                        <span className="shrink-0 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent">#{project.mention}</span>
                         {project.missing && <span className="shrink-0 text-[11px] font-medium text-warning">Missing</span>}
                       </div>
                       <div className="mt-0.5 truncate text-[12px] text-ink-secondary" title={project.path}>{project.path}</div>
                       <div className="mt-2 text-[11px] text-ink-secondary">{sourceLabel(project)}</div>
                     </div>
                     <button
-                      onClick={() => projectsApi.open(project.path).catch((reason) => setError(errorMessage(reason)))}
+                      onClick={() => void open(project).catch(() => undefined)}
                       disabled={project.missing}
                       className="rounded-lg p-2 text-ink-secondary hover:bg-raised hover:text-ink disabled:opacity-30"
                       title="Open project folder"
@@ -429,7 +407,7 @@ export function ProjectsScreen() {
         <AddProjectModal
           onClose={() => setAdding(false)}
           onAdded={(project) => {
-            setProjects((current) => [project, ...(current ?? []).filter((item) => item.id !== project.id)]);
+            upsert(project);
             setAdding(false);
           }}
         />

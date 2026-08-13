@@ -12,6 +12,7 @@ import { ComputerPanel } from "@/components/ComputerPanel";
 import { AppSettingsPanel } from "@/components/AppSettingsPanel";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { ProjectsScreen } from "@/components/ProjectsScreen";
+import { ProjectsProvider } from "@/state/projects";
 
 function Shell() {
   const { state, dispatch } = useStore();
@@ -88,8 +89,10 @@ export default function App() {
   }, []);
   return (
     <StoreProvider>
-      <Shell />
-      {gated && <Onboarding onDone={() => setGated(false)} />}
+      <ProjectsProvider>
+        <Shell />
+        {gated && <Onboarding onDone={() => setGated(false)} />}
+      </ProjectsProvider>
     </StoreProvider>
   );
 }

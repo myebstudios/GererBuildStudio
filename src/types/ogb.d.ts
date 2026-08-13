@@ -20,6 +20,19 @@ declare global {
       permRequestMic(): Promise<boolean>;
       /** Opens System Settings on a privacy pane: mic|screen|speech. */
       permOpenSettings(pane: "mic" | "screen" | "speech"): Promise<void>;
+      /** Local project management. All filesystem access stays in Electron main. */
+      projects: {
+        list(): Promise<ProjectRecord[]>;
+        chooseDirectory(options?: {
+          title?: string;
+          buttonLabel?: string;
+          defaultPath?: string;
+        }): Promise<string | null>;
+        addExisting(projectPath: string): Promise<ProjectRecord>;
+        create(input: { parentPath: string; name: string }): Promise<ProjectRecord>;
+        clone(input: { repositoryUrl: string; destinationPath: string }): Promise<ProjectRecord>;
+        open(projectPath: string): Promise<void>;
+      };
       /** In-app auto-update (packaged app only; dormant in dev). onState
        * fires immediately with the current state, then on transitions. */
       updater?: {
@@ -38,4 +51,14 @@ export interface UpdaterState {
   version?: string;
   percent?: number;
   message?: string;
+}
+
+export interface ProjectRecord {
+  id: string;
+  name: string;
+  path: string;
+  source: "existing" | "created" | "github";
+  repositoryUrl?: string;
+  addedAt: number;
+  missing: boolean;
 }

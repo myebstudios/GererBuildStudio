@@ -28,6 +28,16 @@ contextBridge.exposeInMainWorld("ogb", {
   /** Opens System Settings on the given privacy pane: mic|screen|speech. */
   permOpenSettings: (pane) => ipcRenderer.invoke("perm:open-settings", pane),
 
+  /** Local project folders. Filesystem and Git access stay in Electron main. */
+  projects: {
+    list: () => ipcRenderer.invoke("projects:list"),
+    chooseDirectory: (options) => ipcRenderer.invoke("projects:choose-directory", options),
+    addExisting: (projectPath) => ipcRenderer.invoke("projects:add-existing", projectPath),
+    create: (input) => ipcRenderer.invoke("projects:create", input),
+    clone: (input) => ipcRenderer.invoke("projects:clone", input),
+    open: (projectPath) => ipcRenderer.invoke("projects:open", projectPath),
+  },
+
   /** In-app auto-update. State object:
    *  { status: "idle"|"checking"|"available"|"downloading"|"downloaded"|"error",
    *    version?, percent?, message? }. onState fires immediately with the

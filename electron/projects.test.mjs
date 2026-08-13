@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ProjectService, parseGitHubRepositoryUrl } from "./projects.mjs";
+import { ProjectService, parseGitHubRepositoryUrl, projectMentionSlug } from "./projects.mjs";
 
 describe("ProjectService", () => {
   let root;
@@ -32,6 +32,7 @@ describe("ProjectService", () => {
     await expect(service.list()).resolves.toEqual([{ ...first, missing: false }]);
     const stored = JSON.parse(await readFile(path.join(dataDir, "projects.json"), "utf8"));
     expect(stored).toHaveLength(1);
+    expect(first.mention).toBe("existing-project");
   });
 
   it("creates a safe child directory and registers it", async () => {
@@ -74,6 +75,43 @@ describe("ProjectService", () => {
     await expect(service.list()).resolves.toEqual([{ ...project, missing: true }]);
   });
 
+  it("assigns deterministic unique mention slugs", async () => {
+    const firstPath = path.join(workspace, "First", "Same Project");
+    const secondPath = path.join(workspace, "Second", "Same Project");
+    await mkdir(firstPath, { recursive: true });
+    await mkdir(secondPath, { recursive: true });
+    const service = new ProjectService({ dataDir });
+
+    const first = await service.addExisting(firstPath);
+    const second = await service.addExisting(secondPath);
+
+    expect(first.mention).toBe("same-project");
+    expect(second.mention).toBe("same-project-2");
+    await expect(service.list()).resolves.toEqual([
+      { ...second, missing: false },
+      { ...first, missing: false },
+    ]);
+  });
+
+  it("atomically migrates legacy records without changing their identity", async () => {
+    await mkdir(dataDir);
+    const projectPath = path.join(workspace, "Legacy App");
+    await mkdir(projectPath);
+    const legacy = {
+      id: "legacy-id",
+      name: "Legacy App",
+      path: projectPath,
+      source: "existing",
+      addedAt: 123,
+    };
+    await writeFile(path.join(dataDir, "projects.json"), `${JSON.stringify([legacy], null, 2)}\n`, "utf8");
+    const service = new ProjectService({ dataDir });
+
+    await expect(service.list()).resolves.toEqual([{ ...legacy, mention: "legacy-app", missing: false }]);
+    const stored = JSON.parse(await readFile(path.join(dataDir, "projects.json"), "utf8"));
+    expect(stored).toEqual([{ ...legacy, mention: "legacy-app" }]);
+  });
+
   it("clones with normalized GitHub input and registers only after success", async () => {
     const cloneRepository = vi.fn(async ({ destinationPath }) => {
       await mkdir(destinationPath);
@@ -108,6 +146,17 @@ describe("ProjectService", () => {
     ).rejects.toThrow("authentication failed");
     await expect(readFile(path.join(dataDir, "projects.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     await expect(stat(destinationPath)).resolves.toMatchObject({});
+  });
+});
+
+describe("projectMentionSlug", () => {
+  it.each([
+    ["OpenMausBot", "openmausbot"],
+    ["My Project", "my-project"],
+    ["Crème brûlée", "creme-brulee"],
+    ["---", "project"],
+  ])("turns %j into %j", (name, mention) => {
+    expect(projectMentionSlug(name)).toBe(mention);
   });
 });
 

@@ -6,6 +6,7 @@ import path from "node:path";
 
 const PROJECTS_FILE = "projects.json";
 const MAX_GIT_ERROR_LENGTH = 8_000;
+const PROJECT_MENTION_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 
 function projectError(message, cause) {
   const error = new Error(message, cause ? { cause } : undefined);
@@ -20,6 +21,8 @@ function validateRecord(record) {
     typeof record.id !== "string" ||
     typeof record.name !== "string" ||
     typeof record.path !== "string" ||
+    (record.mention !== undefined &&
+      (typeof record.mention !== "string" || !PROJECT_MENTION_PATTERN.test(record.mention))) ||
     !["existing", "created", "github"].includes(record.source) ||
     typeof record.addedAt !== "number" ||
     (record.repositoryUrl !== undefined && typeof record.repositoryUrl !== "string")
@@ -27,6 +30,45 @@ function validateRecord(record) {
     throw projectError("Saved project data is invalid. The file was left unchanged.");
   }
   return record;
+}
+
+export function projectMentionSlug(name) {
+  const slug = String(name ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^[._-]+|[._-]+$/g, "")
+    .replace(/-+/g, "-");
+  return slug || "project";
+}
+
+function assignMissingMentions(records) {
+  const used = new Set();
+  const migratedMentions = new Set();
+  for (const record of records) {
+    if (record.mention && !used.has(record.mention)) used.add(record.mention);
+  }
+  let changed = false;
+  const migrated = records.map((record) => {
+    if (record.mention && used.has(record.mention)) {
+      // The first instance keeps a duplicate legacy slug; later instances
+      // are assigned a fresh one below.
+      if (!migratedMentions.has(record.mention)) {
+        migratedMentions.add(record.mention);
+        return record;
+      }
+    }
+    const base = projectMentionSlug(record.name);
+    let mention = base;
+    let suffix = 2;
+    while (used.has(mention)) mention = `${base}-${suffix++}`;
+    used.add(mention);
+    migratedMentions.add(mention);
+    changed = true;
+    return { ...record, mention };
+  });
+  return { records: migrated, changed };
 }
 
 function validateFolderName(name) {
@@ -155,7 +197,10 @@ export class ProjectService {
     try {
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) throw new Error("Expected an array");
-      return parsed.map(validateRecord);
+      const validated = parsed.map(validateRecord);
+      const migrated = assignMissingMentions(validated);
+      if (migrated.changed) await this.writeRecords(migrated.records);
+      return migrated.records;
     } catch (error) {
       if (error?.name === "ProjectError") throw error;
       throw projectError("Saved project data is invalid. The file was left unchanged.", error);
@@ -190,6 +235,14 @@ export class ProjectService {
     const record = {
       id: randomUUID(),
       name: path.basename(canonicalPath),
+      mention: (() => {
+        const base = projectMentionSlug(path.basename(canonicalPath));
+        const used = new Set(records.map((item) => item.mention));
+        let candidate = base;
+        let suffix = 2;
+        while (used.has(candidate)) candidate = `${base}-${suffix++}`;
+        return candidate;
+      })(),
       path: canonicalPath,
       source,
       ...(repositoryUrl ? { repositoryUrl } : {}),

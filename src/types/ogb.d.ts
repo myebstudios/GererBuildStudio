@@ -56,6 +56,7 @@ export interface UpdaterState {
 export interface ProjectRecord {
   id: string;
   name: string;
+  mention: string;
   path: string;
   source: "existing" | "created" | "github";
   repositoryUrl?: string;

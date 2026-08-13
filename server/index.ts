@@ -10,14 +10,23 @@ import { fileURLToPath } from "node:url";
 
 import * as box from "./box.ts";
 import * as composio from "./composio.ts";
-import { ensureDirs, instanceConfigs, loadConfig, saveConfig, EVENTS_DIR, NATIVE_DIR } from "./config.ts";
+import { ensureDirs, instanceConfigs, loadConfig, saveConfig, DATA_DIR, EVENTS_DIR, NATIVE_DIR } from "./config.ts";
 import type { RuntimeEvent } from "./contracts.ts";
 
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
 import { mentionedBots, Store, type Message } from "./store.ts";
-import { resolveProjectContext } from "./projects.ts";
+import { readRegisteredProjects, resolveProjectContext } from "./projects.ts";
+import {
+  TaskConflictError,
+  TaskStore,
+  type CreateTaskInput,
+  type TaskActor,
+  type TaskFilters,
+  type TaskRecord,
+  type UpdateTaskInput,
+} from "./tasks.ts";
 
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
 const STATIC_DIR = process.env.OMB_STATIC_DIR || null;
@@ -111,6 +120,7 @@ async function defaultSelection() {
 }
 let bootSelection = { instanceId: "claude", model: "claude-sonnet-5" };
 const store = new Store(() => bootSelection);
+const taskStore = new TaskStore(DATA_DIR);
 bootSelection = await defaultSelection();
 store.seedIfEmpty();
 
@@ -683,6 +693,70 @@ function configStatus() {
   };
 }
 
+function taskActorForBot(botId: string): Extract<TaskActor, { kind: "bot" }> | null {
+  const bot = store.bot(botId);
+  return bot ? { kind: "bot", botId: bot.id, name: bot.name } : null;
+}
+
+function taskFilters(url: URL): TaskFilters {
+  const value = (name: string) => url.searchParams.get(name) || undefined;
+  const nullable = (name: string) => {
+    const current = url.searchParams.get(name);
+    return current === "unassigned" || current === "none" ? null : current || undefined;
+  };
+  return {
+    text: value("text"),
+    projectId: nullable("projectId"),
+    assigneeBotId: nullable("assigneeBotId"),
+    status: value("status") as TaskFilters["status"],
+    type: value("type") as TaskFilters["type"],
+    priority: value("priority") as TaskFilters["priority"],
+    tag: value("tag"),
+    overdue: url.searchParams.has("overdue") ? url.searchParams.get("overdue") === "true" : undefined,
+  };
+}
+
+function validateTaskReferences(input: CreateTaskInput | UpdateTaskInput, agentsOnly = false): string | null {
+  if (input.projectId) {
+    const project = readRegisteredProjects().find((candidate) => candidate.id === input.projectId);
+    if (!project) return "no such project";
+  }
+  if (input.assigneeBotId) {
+    const bot = store.bot(input.assigneeBotId);
+    if (!bot || (agentsOnly && bot.hidden)) return "no such agent";
+  }
+  return null;
+}
+
+function taskView(task: TaskRecord, includeProjectPath = false) {
+  const project = task.projectId
+    ? readRegisteredProjects().find((candidate) => candidate.id === task.projectId)
+    : undefined;
+  const assignee = task.assigneeBotId ? store.bot(task.assigneeBotId) : undefined;
+  return {
+    ...task,
+    project: task.projectId
+      ? {
+          id: task.projectId,
+          name: project?.name ?? "Unavailable project",
+          mention: project?.mention ?? task.projectId,
+          available: Boolean(project?.available),
+          ...(includeProjectPath && project?.available ? { path: project.path } : {}),
+        }
+      : null,
+    assignee: task.assigneeBotId
+      ? { id: task.assigneeBotId, name: assignee?.name ?? "Unavailable agent", available: Boolean(assignee && !assignee.hidden) }
+      : null,
+  };
+}
+
+function taskBoardPayload() {
+  return {
+    tasks: taskStore.list().map((task) => taskView(task)),
+    projects: readRegisteredProjects().map(({ id, name, mention, available }) => ({ id, name, mention, available })),
+  };
+}
+
 /** Rebuild the provider fleet after a config change so new keys take
  * effect without a server restart (kills any in-flight turns). */
 async function reloadProviders() {
@@ -744,6 +818,50 @@ const server = createServer(async (req, res) => {
             description: b.description || undefined,
           }));
         return json(res, 200, { bots });
+      }
+      const callerId = String(req.headers["x-omb-bot-id"] ?? "");
+      const caller = taskActorForBot(callerId);
+      if (method === "GET" && path === "/api/internal/tasks") {
+        if (!caller) return json(res, 401, { error: "unknown calling agent" });
+        return json(res, 200, { tasks: taskStore.list(taskFilters(url)).map((task) => taskView(task, true)) });
+      }
+      if (method === "POST" && path === "/api/internal/tasks") {
+        if (!caller) return json(res, 401, { error: "unknown calling agent" });
+        const body = await readBody(req) as CreateTaskInput;
+        const referenceError = validateTaskReferences(body, true);
+        if (referenceError) return json(res, 404, { error: referenceError });
+        const task = taskStore.create(body, caller);
+        broadcast({ kind: "task.created", task: taskView(task) });
+        return json(res, 201, { task: taskView(task, true) });
+      }
+      let taskMatch = path.match(/^\/api\/internal\/tasks\/([\w-]+)$/);
+      if (taskMatch && method === "PATCH") {
+        if (!caller) return json(res, 401, { error: "unknown calling agent" });
+        const body = await readBody(req);
+        const patch = (body.patch ?? {}) as UpdateTaskInput;
+        const referenceError = validateTaskReferences(patch, true);
+        if (referenceError) return json(res, 404, { error: referenceError });
+        const task = taskStore.update(taskMatch[1], Number(body.revision), patch, caller);
+        broadcast({ kind: "task.updated", task: taskView(task) });
+        return json(res, 200, { task: taskView(task, true) });
+      }
+      taskMatch = path.match(/^\/api\/internal\/tasks\/([\w-]+)\/claim$/);
+      if (taskMatch && method === "POST") {
+        if (!caller) return json(res, 401, { error: "unknown calling agent" });
+        const body = await readBody(req);
+        const task = taskStore.claim(taskMatch[1], Number(body.revision), caller);
+        broadcast({ kind: "task.updated", task: taskView(task) });
+        return json(res, 200, { task: taskView(task, true) });
+      }
+      taskMatch = path.match(/^\/api\/internal\/tasks\/([\w-]+)\/delegate$/);
+      if (taskMatch && method === "POST") {
+        if (!caller) return json(res, 401, { error: "unknown calling agent" });
+        const body = await readBody(req);
+        const target = store.bot(String(body.botId ?? ""));
+        if (!target || target.hidden) return json(res, 404, { error: "no such agent" });
+        const task = taskStore.delegate(taskMatch[1], Number(body.revision), target.id, target.name, caller);
+        broadcast({ kind: "task.updated", task: taskView(task) });
+        return json(res, 200, { task: taskView(task, true) });
       }
       if (method === "POST" && path === "/api/internal/ask-bot") {
         const body = await readBody(req);
@@ -836,6 +954,45 @@ const server = createServer(async (req, res) => {
         sseClients.delete(res);
       });
       return;
+    }
+
+    // ── shared task board ─────────────────────────────────────────────
+    if (method === "GET" && path === "/api/tasks") {
+      return json(res, 200, taskBoardPayload());
+    }
+    if (method === "POST" && path === "/api/tasks") {
+      const body = await readBody(req) as CreateTaskInput;
+      const referenceError = validateTaskReferences(body);
+      if (referenceError) return json(res, 404, { error: referenceError });
+      const task = taskStore.create(body, { kind: "user" });
+      broadcast({ kind: "task.created", task: taskView(task) });
+      return json(res, 201, { task: taskView(task) });
+    }
+    let taskMatch = path.match(/^\/api\/tasks\/([\w-]+)$/);
+    if (taskMatch && method === "PATCH") {
+      const body = await readBody(req);
+      const patch = (body.patch ?? {}) as UpdateTaskInput;
+      const referenceError = validateTaskReferences(patch);
+      if (referenceError) return json(res, 404, { error: referenceError });
+      const task = taskStore.update(taskMatch[1], Number(body.revision), patch, { kind: "user" });
+      broadcast({ kind: "task.updated", task: taskView(task) });
+      return json(res, 200, { task: taskView(task) });
+    }
+    taskMatch = path.match(/^\/api\/tasks\/([\w-]+)\/delegate$/);
+    if (taskMatch && method === "POST") {
+      const body = await readBody(req);
+      const target = store.bot(String(body.botId ?? ""));
+      if (!target) return json(res, 404, { error: "no such agent" });
+      const task = taskStore.delegate(taskMatch[1], Number(body.revision), target.id, target.name, { kind: "user" });
+      broadcast({ kind: "task.updated", task: taskView(task) });
+      return json(res, 200, { task: taskView(task) });
+    }
+    taskMatch = path.match(/^\/api\/tasks\/([\w-]+)$/);
+    if (taskMatch && method === "DELETE") {
+      const body = await readBody(req);
+      const task = taskStore.delete(taskMatch[1], Number(body.revision));
+      broadcast({ kind: "task.deleted", taskId: task.id });
+      return json(res, 200, { ok: true });
     }
 
     // ── bots ──
@@ -1171,7 +1328,10 @@ const server = createServer(async (req, res) => {
     return json(res, 404, { error: `no route: ${method} ${path}` });
   } catch (e) {
     const status = (e as any)?.status ?? 500;
-    return json(res, status, { error: e instanceof Error ? e.message : String(e) });
+    return json(res, status, {
+      error: e instanceof Error ? e.message : String(e),
+      ...(e instanceof TaskConflictError ? { latest: taskView(e.latest) } : {}),
+    });
   }
 });
 

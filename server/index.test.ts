@@ -89,6 +89,82 @@ describe("harness HTTP API", () => {
     expect(body.bots[0].messages.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("creates, updates, conflicts, broadcasts, and deletes shared tasks", async () => {
+    const streamAbort = new AbortController();
+    const stream = await fetch(`${BASE}/api/events`, { signal: streamAbort.signal });
+    const reader = stream.body!.getReader();
+    const nextTaskFrame = (kind: string) => new Promise<any>((resolve, reject) => {
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const timeout = setTimeout(() => reject(new Error(`timed out waiting for ${kind}`)), 2_000);
+      const read = async () => {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) throw new Error("event stream ended");
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split("\n\n");
+          buffer = chunks.pop() ?? "";
+          for (const chunk of chunks) {
+            const line = chunk.split("\n").find((entry) => entry.startsWith("data: "));
+            if (!line) continue;
+            const frame = JSON.parse(line.slice(6));
+            if (frame.kind === kind) {
+              clearTimeout(timeout);
+              resolve(frame);
+              return;
+            }
+          }
+        }
+      };
+      void read().catch(reject);
+    });
+
+    const createdFrame = nextTaskFrame("task.created");
+    const created = await api("POST", "/api/tasks", {
+      title: "Build shared board",
+      type: "feature",
+      priority: "high",
+      tags: ["agents"],
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.task).toMatchObject({ title: "Build shared board", revision: 1, status: "todo" });
+    await expect(createdFrame).resolves.toMatchObject({ kind: "task.created", task: { id: created.body.task.id } });
+
+    const listed = await api("GET", "/api/tasks");
+    expect(listed.body.tasks).toContainEqual(expect.objectContaining({ id: created.body.task.id }));
+    expect(Array.isArray(listed.body.projects)).toBe(true);
+
+    const updatedFrame = nextTaskFrame("task.updated");
+    const updated = await api("PATCH", `/api/tasks/${created.body.task.id}`, {
+      revision: created.body.task.revision,
+      patch: { status: "doing", priority: "urgent" },
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.body.task).toMatchObject({ status: "doing", priority: "urgent", revision: 2 });
+    await expect(updatedFrame).resolves.toMatchObject({ task: { revision: 2 } });
+
+    const stale = await api("PATCH", `/api/tasks/${created.body.task.id}`, {
+      revision: 1,
+      patch: { title: "Overwrite" },
+    });
+    expect(stale.status).toBe(409);
+    expect(stale.body.latest).toMatchObject({ title: "Build shared board", revision: 2 });
+
+    const bots = (await api("GET", "/api/bots")).body.bots;
+    const delegated = await api("POST", `/api/tasks/${created.body.task.id}/delegate`, {
+      revision: 2,
+      botId: bots[0].id,
+    });
+    expect(delegated.status).toBe(200);
+    expect(delegated.body.task.assigneeBotId).toBe(bots[0].id);
+    expect((await api("POST", `/api/tasks/${created.body.task.id}/delegate`, { revision: 3, botId: "missing" })).status).toBe(404);
+
+    const deleted = await api("DELETE", `/api/tasks/${created.body.task.id}`, { revision: delegated.body.task.revision });
+    expect(deleted).toEqual({ status: 200, body: { ok: true } });
+    expect((await api("GET", "/api/tasks")).body.tasks.find((task: { id: string }) => task.id === created.body.task.id)).toBeUndefined();
+    streamAbort.abort();
+  });
+
   it("describes the configured fleet, shadows included", async () => {
     const { status, body } = await api("GET", "/api/instances");
     expect(status).toBe(200);

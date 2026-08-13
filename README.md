@@ -122,7 +122,8 @@ Secrets are write-only: the UI only ever sees "configured" flags.
 
 **Also in the box:** streaming replies with tool-run activity chips · native macOS dictation from the
 composer mic (on-device Apple speech recognition — desktop app) · SupaMaus cursor mascots with role-aware
-expressions · screenshots of the bot's work folded into the transcript.
+expressions · screenshots of the bot's work folded into the transcript · a local Projects screen for adding
+existing folders, creating new workspaces, and cloning GitHub repositories to a chosen path.
 
 ## How it works
 
@@ -158,6 +159,7 @@ flowchart LR
 | API | `server/index.ts` | Bots, turns, approvals, model catalog, computer lifecycle, connectors, config — HTTP + SSE. |
 | App | `src/` | The chat shell. Server-backed store, one reducer, zero client-side transports. |
 | Desktop | `electron/` | macOS + Windows shells: dictation helper (SFSpeechRecognizer, macOS only), local screen capture, CUA bridge (macOS only). |
+| Projects | `electron/projects.mjs`, `src/components/ProjectsScreen.tsx` | Desktop-only local folder registry, directory creation, and shell-free GitHub cloning. |
 
 ## Quick start
 

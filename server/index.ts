@@ -127,6 +127,14 @@ function broadcast(payload: unknown) {
   }
 }
 
+function deleteThreadLogs(threadId: string) {
+  for (const dir of [EVENTS_DIR, NATIVE_DIR]) {
+    try {
+      unlinkSync(join(dir, `${threadId}.ndjson`));
+    } catch {}
+  }
+}
+
 // ── server-side event folding (upstream's ingestion worker, miniature) ──
 // The canonical stream is the source of truth; the persisted transcript
 // and every client view are projections of it.
@@ -879,11 +887,7 @@ const server = createServer(async (req, res) => {
       const group = store.group(m[1]);
       if (!group) return json(res, 404, { error: "no such room" });
       store.deleteGroup(group.id);
-      for (const dir of [EVENTS_DIR, NATIVE_DIR]) {
-        try {
-          unlinkSync(join(dir, `${group.threadId}.ndjson`));
-        } catch {}
-      }
+      deleteThreadLogs(group.threadId);
       broadcast({ kind: "group.deleted", groupId: group.id });
       return json(res, 200, { ok: true });
     }
@@ -905,6 +909,24 @@ const server = createServer(async (req, res) => {
       store.patchGroup(group.id, { queuedBotIds: [] });
       broadcastGroup(group.id);
       await instance?.adapter.interruptTurn(group.threadId).catch(() => {});
+      return json(res, 200, { ok: true });
+    }
+
+    // Erase one transcript without deleting its bot or room. The idle guard
+    // prevents a late runtime event from repopulating history after clearing.
+    m = path.match(/^\/api\/threads\/([\w-]+)\/messages$/);
+    if (m && method === "DELETE") {
+      const threadId = m[1];
+      const bot = store.botByThread(threadId);
+      const group = bot ? undefined : store.groupByThread(threadId);
+      if (!bot && !group) return json(res, 404, { error: "no such conversation" });
+      if (bot?.busy || group?.busyBotId || (group?.queuedBotIds?.length ?? 0) > 0) {
+        return json(res, 409, { error: "Wait for the conversation to finish before clearing it." });
+      }
+
+      store.clearThread(threadId);
+      deleteThreadLogs(threadId);
+      broadcast({ kind: "thread.cleared", threadId });
       return json(res, 200, { ok: true });
     }
 
@@ -950,11 +972,7 @@ const server = createServer(async (req, res) => {
       await registry.get(bot.modelSelection.instanceId)?.adapter.interruptTurn(bot.threadId).catch(() => {});
       stopScreenPoller(bot.id);
       store.deleteBot(bot.id);
-      for (const dir of [EVENTS_DIR, NATIVE_DIR]) {
-        try {
-          unlinkSync(join(dir, `${bot.threadId}.ndjson`));
-        } catch {}
-      }
+      deleteThreadLogs(bot.threadId);
       broadcast({ kind: "bot.deleted", botId: bot.id });
       return json(res, 200, { ok: true });
     }

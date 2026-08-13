@@ -4,7 +4,7 @@
 // suite is deterministic with or without agent CLIs installed — and pins
 // the shadow-instance behavior end to end while it's at it.
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -118,6 +118,82 @@ describe("harness HTTP API", () => {
     expect(deleted.status).toBe(200);
     const after = await api("GET", "/api/bots");
     expect(after.body.bots.find((b: { id: string }) => b.id === bot.id)).toBeUndefined();
+  });
+
+  it("clears direct and room history without deleting either conversation", async () => {
+    const seeded = (await api("GET", "/api/bots")).body.bots[0];
+    const created = await api("POST", "/api/bots");
+    const bot = created.body.bot;
+    const room = (await api("POST", "/api/groups", {
+      name: "History room",
+      memberIds: [bot.id, seeded.id],
+    })).body.group;
+    expect((await api("POST", `/api/groups/${room.id}/messages`, { text: "A room note without a mention" })).status).toBe(202);
+
+    const dataDir = join(home, ".openmausbot");
+    const eventLog = join(dataDir, "events", `${bot.threadId}.ndjson`);
+    const nativeLog = join(dataDir, "native", `${bot.threadId}.ndjson`);
+    writeFileSync(eventLog, "old event\n");
+    writeFileSync(nativeLog, "old native event\n");
+
+    const streamAbort = new AbortController();
+    const stream = await fetch(`${BASE}/api/events`, { signal: streamAbort.signal });
+    const reader = stream.body!.getReader();
+    const clearedFrame = (async () => {
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) throw new Error("event stream ended before thread.cleared");
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+        for (const chunk of chunks) {
+          const line = chunk.split("\n").find((entry) => entry.startsWith("data: "));
+          if (!line) continue;
+          const frame = JSON.parse(line.slice(6));
+          if (frame.kind === "thread.cleared" && frame.threadId === bot.threadId) return frame;
+        }
+      }
+    })();
+
+    const direct = await api("DELETE", `/api/threads/${bot.threadId}/messages`);
+    expect(direct).toEqual({ status: 200, body: { ok: true } });
+    await expect(Promise.race([
+      clearedFrame,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("thread.cleared was not broadcast")), 2_000)),
+    ])).resolves.toMatchObject({ kind: "thread.cleared", threadId: bot.threadId });
+    streamAbort.abort();
+
+    expect((await api("POST", `/api/groups/${room.id}/messages`, { text: `@${bot.name} keep working` })).status).toBe(202);
+    const activeClear = await api("DELETE", `/api/threads/${room.threadId}/messages`);
+    expect(activeClear.status).toBe(409);
+    expect(activeClear.body.error).toContain("finish");
+    expect((await api("POST", `/api/groups/${room.id}/interrupt`)).status).toBe(200);
+
+    const roomClear = await api("DELETE", `/api/threads/${room.threadId}/messages`);
+    expect(roomClear.status).toBe(200);
+    expect((await api("DELETE", "/api/threads/not-owned/messages")).status).toBe(404);
+
+    const after = (await api("GET", "/api/bots")).body;
+    expect(after.bots.find((candidate: { id: string }) => candidate.id === bot.id)).toMatchObject({
+      id: bot.id,
+      threadId: bot.threadId,
+      messages: [],
+      activeLeafId: null,
+      unread: false,
+      resumeCursors: {},
+    });
+    expect(after.groups.find((candidate: { id: string }) => candidate.id === room.id)).toMatchObject({
+      id: room.id,
+      threadId: room.threadId,
+      messages: [],
+      unread: false,
+    });
+    expect(existsSync(eventLog)).toBe(false);
+    expect(existsSync(nativeLog)).toBe(false);
+    expect((await api("DELETE", `/api/groups/${room.id}`)).status).toBe(200);
+    expect((await api("DELETE", `/api/bots/${bot.id}`)).status).toBe(200);
   });
 
   it("persists an answered onboarding card", async () => {

@@ -303,6 +303,24 @@ export class Store {
     return this.thread(threadId).activeLeafId;
   }
 
+  /** Keep a thread addressable while irreversibly replacing its transcript. */
+  clearThread(threadId: string): void {
+    this.threads.set(threadId, { messages: [], activeLeafId: null });
+    this.saveThread(threadId);
+    const bot = this.botByThread(threadId);
+    if (bot) {
+      bot.resumeCursors = {};
+      bot.rewound = false;
+      bot.unread = false;
+      this.saveBots();
+    }
+    const group = this.groupByThread(threadId);
+    if (group) {
+      group.unread = false;
+      this.saveGroups();
+    }
+  }
+
   /** The visible conversation: root → activeLeafId. */
   activePath(threadId: string): Message[] {
     const t = this.thread(threadId);

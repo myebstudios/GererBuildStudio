@@ -200,6 +200,11 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
       expect(midTurn.status).toBe(409);
       expect((await getBot(created.id)).messages.filter((m: Msg) => m.text === "second try")).toHaveLength(0);
 
+      const midTurnClear = await api("DELETE", `/api/threads/${created.threadId}/messages`);
+      expect(midTurnClear.status).toBe(409);
+      expect(midTurnClear.body.error).toContain("finish");
+      expect((await getBot(created.id)).messages).not.toHaveLength(0);
+
       // stop the turn, then the same edit forks the conversation
       expect((await api("POST", `/api/bots/${created.id}/interrupt`)).status).toBe(200);
       await waitFor(async () => (await getBot(created.id)).busy === false, "the turn to settle", 20_000);

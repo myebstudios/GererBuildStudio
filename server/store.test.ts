@@ -155,6 +155,31 @@ describe("Store", () => {
     expect(reloaded.activePath(bot.threadId).map((m) => m.text)).not.toContain("v1");
   });
 
+  it("clears a thread durably without changing its owner or other transcripts", () => {
+    const store = new Store(selection);
+    const clearedBot = store.createBot();
+    const untouchedBot = store.createBot();
+    const untouchedMessages = store.messagesFor(untouchedBot.threadId).map((message) => message.id);
+    const original = store.appendMessage(clearedBot.threadId, { role: "user", kind: "text", text: "v1" });
+    store.branchMessage(clearedBot.threadId, original.id, "v2");
+    store.patchBot(clearedBot.id, { resumeCursors: { claude: "session-with-old-context" }, rewound: true, unread: true });
+
+    store.clearThread(clearedBot.threadId);
+
+    expect(store.bot(clearedBot.id)?.threadId).toBe(clearedBot.threadId);
+    expect(store.messagesFor(clearedBot.threadId)).toEqual([]);
+    expect(store.activeLeaf(clearedBot.threadId)).toBeNull();
+    expect(store.bot(clearedBot.id)).toMatchObject({ resumeCursors: {}, rewound: false, unread: false });
+    expect(store.messagesFor(untouchedBot.threadId).map((message) => message.id)).toEqual(untouchedMessages);
+
+    const reloaded = new Store(selection);
+    expect(reloaded.bot(clearedBot.id)?.threadId).toBe(clearedBot.threadId);
+    expect(reloaded.messagesFor(clearedBot.threadId)).toEqual([]);
+    expect(reloaded.activeLeaf(clearedBot.threadId)).toBeNull();
+    expect(reloaded.bot(clearedBot.id)).toMatchObject({ resumeCursors: {}, rewound: false, unread: false });
+    expect(reloaded.messagesFor(untouchedBot.threadId).map((message) => message.id)).toEqual(untouchedMessages);
+  });
+
   it("migrates a pre-branching flat transcript file", () => {
     const store = new Store(selection);
     const bot = store.createBot();

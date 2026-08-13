@@ -16,6 +16,7 @@ import { ProjectMentionText } from "./ProjectMentionText";
 import { ProjectMentionTextarea } from "./ProjectMentionTextarea";
 import { RoomActivityPanel } from "./RoomActivityPanel";
 import { OptionCard } from "./OptionCard";
+import { AttachmentList } from "./AttachmentViewer";
 
 function dayLabel(at: number): string {
   const d = new Date(at);
@@ -71,7 +72,7 @@ const Transcript = memo(function Transcript({
                 <span className="max-w-[480px] truncate font-mono">{m.tool.name}</span>
               </div>
             </div>
-          ) : m.kind === "text" && m.text ? (
+          ) : m.kind === "text" && (m.text || (m.attachments && m.attachments.length > 0)) ? (
             <div className={cn("group flex w-full flex-col", user ? "items-end" : "items-start")}>
               <div className={cn("flex w-full items-end gap-1.5", user ? "justify-end" : "justify-start")}>
                 {user && <ReactionBar threadId={group.threadId} message={m} />}
@@ -82,7 +83,8 @@ const Transcript = memo(function Transcript({
                   )}
                   title={new Date(m.at).toLocaleString()}
                 >
-                  {user ? <ProjectMentionText text={m.text} /> : <ChatMarkdown text={m.text} />}
+                  <AttachmentList attachments={m.attachments} />
+                  {m.text && (user ? <ProjectMentionText text={m.text} /> : <ChatMarkdown text={m.text} />)}
                 </div>
                 {!user && <ReactionBar threadId={group.threadId} message={m} />}
                 <span className="self-end pb-1 text-[11px] tabular-nums text-ink-secondary/70 opacity-0 transition-opacity group-hover:opacity-100">

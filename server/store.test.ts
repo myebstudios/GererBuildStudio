@@ -243,4 +243,40 @@ describe("Store", () => {
 
     expect(new Store(selection).group(group.id)?.autoHandoffs).toBe(false);
   });
+
+  it("persists messages with attachments and preserves them across branching and restart", () => {
+    const store = new Store(selection);
+    const bot = store.createBot();
+    const att = {
+      id: "att-1",
+      name: "diagram.png",
+      mimeType: "image/png",
+      size: 1024,
+      dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    };
+    const userMsg = store.appendMessage(bot.threadId, {
+      role: "user",
+      kind: "text",
+      text: "Look at this image",
+      attachments: [att],
+    });
+
+    expect(userMsg.attachments).toEqual([att]);
+
+    // Branching preserves attachments if none passed
+    const branched = store.branchMessage(bot.threadId, userMsg.id, "Edited text without re-upload");
+    expect(branched?.attachments).toEqual([att]);
+
+    // Branching with new attachments replaces them
+    const att2 = { ...att, id: "att-2", name: "code.ts" };
+    const branchedWithNew = store.branchMessage(bot.threadId, userMsg.id, "Second edit", [att2]);
+    expect(branchedWithNew?.attachments).toEqual([att2]);
+
+    // Reload from disk
+    const reloaded = new Store(selection);
+    const msgs = reloaded.messagesFor(bot.threadId);
+    const persistedOriginal = msgs.find((m) => m.id === userMsg.id);
+    expect(persistedOriginal?.attachments).toEqual([att]);
+  });
 });
+

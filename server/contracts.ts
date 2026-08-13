@@ -81,6 +81,19 @@ export type RuntimeEvent = RuntimeEventBase &
 
 export type RuntimeEventListener = (event: RuntimeEvent) => void;
 
+export interface Attachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  /** Base64 data URL (e.g. data:image/png;base64,... or data:application/octet-stream;base64,...) */
+  dataUrl?: string;
+  /** Extracted UTF-8 text for text/code/markup files */
+  textContent?: string;
+  /** Saved local path on disk in the thread's workspace */
+  path?: string;
+}
+
 // ── adapter contract (upstream ProviderAdapterShape, promise-flavored) ──
 // The conversation runtime every provider is flattened into. streamEvents
 // becomes onEvent(listener) → unsubscribe; sessions start implicitly on
@@ -89,6 +102,7 @@ export type RuntimeEventListener = (event: RuntimeEvent) => void;
 export interface SendTurnInput {
   threadId: ThreadId;
   text: string;
+  attachments?: Attachment[];
   model?: string;
   resumeCursor?: unknown;
   /** Prior turns for transcript-replay providers (API-backed drivers). */

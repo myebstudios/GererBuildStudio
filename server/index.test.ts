@@ -380,9 +380,54 @@ describe("harness HTTP API", () => {
     expect(after.body.profile).toEqual({ name: "Ada Lovelace", email: "Ada@Example.com" });
   });
 
+  it("accepts messages with attachments even when text is empty and enforces validation", async () => {
+    const { body } = await api("GET", "/api/bots");
+    const bot = body.bots[0];
+
+    // Completely empty message (no text, no attachments) is rejected with 400
+    const emptyRes = await api("POST", `/api/bots/${bot.id}/messages`, { text: "", attachments: [] });
+    expect(emptyRes.status).toBe(400);
+    expect(emptyRes.body.error).toContain("text or attachment required");
+
+    const att = {
+      id: "att-smoke-1",
+      name: "sample.txt",
+      mimeType: "text/plain",
+      size: 14,
+      dataUrl: "data:text/plain;base64,SGVsbG8gV29ybGQhCg==",
+      textContent: "Hello World!\n",
+    };
+
+    // Bot route passes validation and attempts turn (which reports ghost instance unavailable)
+    const botRes = await api("POST", `/api/bots/${bot.id}/messages`, {
+      text: "",
+      attachments: [att],
+    });
+    expect(botRes.status).toBe(409);
+    expect(botRes.body.error).toContain("unavailable");
+
+    // Group message with attachments returns 202 accepted
+    const groupRes = await api("POST", "/api/groups", { memberIds: [bot.id], name: "Attachment Room" });
+    expect(groupRes.status).toBe(201);
+    const group = groupRes.body.group;
+
+    const groupSend = await api("POST", `/api/groups/${group.id}/messages`, {
+      text: "",
+      attachments: [att],
+    });
+    expect(groupSend.status).toBe(202);
+
+    const botsList = await api("GET", "/api/bots");
+    const updatedGroup = botsList.body.groups.find((g: { id: string }) => g.id === group.id);
+    const userGroupMsg = updatedGroup.messages.find((m: any) => m.role === "user");
+    expect(userGroupMsg).toBeDefined();
+    expect(userGroupMsg.attachments[0].name).toBe("sample.txt");
+  });
+
   it("404s unknown routes with the route in the error", async () => {
     const res = await api("GET", "/api/definitely-not-a-route");
     expect(res.status).toBe(404);
     expect(res.body.error).toContain("/api/definitely-not-a-route");
   });
 });
+

@@ -25,6 +25,8 @@ import { ModelPicker } from "./ModelPicker";
 import { ReactionBar, ReactionChips } from "./Reactions";
 import { cn } from "@/lib/cn";
 import { ProjectMentionText } from "./ProjectMentionText";
+import { AttachmentList } from "./AttachmentViewer";
+import type { Attachment } from "@/state/store";
 
 /** Long user messages collapse behind a fade so pasted walls of text don't
  * bury the conversation; bots get full markdown. */
@@ -158,26 +160,28 @@ class MessageBoundary extends Component<{ children: ReactNode; fallbackText: str
  * conversation), Esc cancels. Shift+Enter for a newline, like everywhere. */
 function BubbleEditor({
   initial,
+  attachments,
   onCancel,
   onSubmit,
 }: {
   initial: string;
+  attachments?: Attachment[];
   onCancel: () => void;
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string, attachments?: Attachment[]) => void;
 }) {
   const [draft, setDraft] = useState(initial);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
+    ref.current?.focus();
+    ref.current?.setSelectionRange(draft.length, draft.length);
   }, []);
   const submit = () => {
-    if (draft.trim()) onSubmit(draft.trim());
+    const t = draft.trim();
+    if (t || (attachments && attachments.length > 0)) onSubmit(t, attachments);
   };
   return (
     <div className="w-full max-w-[70%] rounded-2xl border border-hairline/40 bg-bubble-user px-4 py-3">
+      <AttachmentList attachments={attachments} />
       <textarea
         ref={ref}
         value={draft}
@@ -201,7 +205,7 @@ function BubbleEditor({
         </button>
         <button
           onClick={submit}
-          disabled={!draft.trim()}
+          disabled={!draft.trim() && (!attachments || attachments.length === 0)}
           className="rounded-full bg-accent px-3 py-1 text-[13px] font-medium text-white disabled:opacity-40"
         >
           Send
@@ -227,7 +231,7 @@ function Bubble({
   isLastBotText: boolean;
   onStartEdit: () => void;
   onCancelEdit: () => void;
-  onSubmitEdit: (text: string) => void;
+  onSubmitEdit: (text: string, attachments?: Attachment[]) => void;
   onRegenerate?: () => void;
 }) {
   const { dispatch } = useStore();
@@ -240,7 +244,7 @@ function Bubble({
   if (user && editing) {
     return (
       <div className="flex w-full justify-end">
-        <BubbleEditor initial={text} onCancel={onCancelEdit} onSubmit={onSubmitEdit} />
+        <BubbleEditor initial={text} attachments={message.attachments} onCancel={onCancelEdit} onSubmit={onSubmitEdit} />
       </div>
     );
   }
@@ -268,7 +272,7 @@ function Bubble({
           </button>
         )}
         {user && message.kind === "text" && <ReactionBar threadId={bot.threadId} message={message} />}
-        {user && <CopyButton text={text} />}
+        {user && text && <CopyButton text={text} />}
         <div
           className={cn(
             "max-w-[70%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
@@ -278,11 +282,14 @@ function Bubble({
         >
           {user ? (
             <>
-              <div
-                className={cn(collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}
-              >
-                <ProjectMentionText text={text} />
-              </div>
+              <AttachmentList attachments={message.attachments} />
+              {text && (
+                <div
+                  className={cn(collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}
+                >
+                  <ProjectMentionText text={text} />
+                </div>
+              )}
               {collapsible && (
                 <button onClick={() => setExpanded(true)} className="mt-1 text-[12.5px] text-ink-secondary hover:text-ink">
                   Show full message
@@ -295,14 +302,17 @@ function Bubble({
               )}
             </>
           ) : (
-            <MessageBoundary fallbackText={text}>
-              <ChatMarkdown text={text} />
-            </MessageBoundary>
+            <>
+              <AttachmentList attachments={message.attachments} />
+              <MessageBoundary fallbackText={text}>
+                <ChatMarkdown text={text} />
+              </MessageBoundary>
+            </>
           )}
         </div>
         {!user && (
           <div className="flex flex-col gap-0.5 self-end pb-0.5">
-            <CopyButton text={text} />
+            {text && <CopyButton text={text} />}
             {isLastBotText && !bot.busy && onRegenerate && (
               <button
                 onClick={onRegenerate}
@@ -319,7 +329,7 @@ function Bubble({
         <span
           className={cn(
             "self-end pb-1 text-[11px] tabular-nums text-ink-secondary/70 opacity-0 transition-opacity group-hover:opacity-100",
-            user ? "order-first mr-1" : "ml-1",
+            user && "order-first",
           )}
         >
           {formatTime(message.at)}
@@ -464,7 +474,7 @@ const MessagesList = memo(function MessagesList({
   canRetryLast: boolean;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
-  onSubmitEdit: (id: string, text: string) => void;
+  onSubmitEdit: (id: string, text: string, attachments?: Attachment[]) => void;
   onRegenerate: () => void;
 }) {
   return (
@@ -506,7 +516,7 @@ const MessagesList = memo(function MessagesList({
                   isLastBotText={m.id === lastBotTextId}
                   onStartEdit={() => onStartEdit(m.id)}
                   onCancelEdit={onCancelEdit}
-                  onSubmitEdit={(text) => onSubmitEdit(m.id, text)}
+                  onSubmitEdit={(text, attachments) => onSubmitEdit(m.id, text, attachments)}
                   onRegenerate={onRegenerate}
                 />
               );
@@ -548,9 +558,9 @@ export function ChatView({ bot }: { bot: Bot }) {
   const startEdit = useCallback((id: string) => setEditingId(id), []);
   const cancelEdit = useCallback(() => setEditingId(null), []);
   const submitEdit = useCallback(
-    (messageId: string, text: string) => {
+    (messageId: string, text: string, attachments?: Attachment[]) => {
       setEditingId(null); // closes the editor first — a double Enter can't fork twice
-      dispatch({ type: "editMessage", botId: bot.id, messageId, text });
+      dispatch({ type: "editMessage", botId: bot.id, messageId, text, attachments });
     },
     [bot.id, dispatch],
   );
@@ -561,8 +571,14 @@ export function ChatView({ bot }: { bot: Bot }) {
   // regenerate = fork the last user message with the same text — reuses the
   // existing branch machinery, so the old answer stays reachable via ‹ ›
   const regenerate = useCallback(() => {
-    if (lastUserMessage?.text && !bot.busy) {
-      dispatch({ type: "editMessage", botId: bot.id, messageId: lastUserMessage.id, text: lastUserMessage.text });
+    if ((lastUserMessage?.text || (lastUserMessage?.attachments && lastUserMessage.attachments.length > 0)) && !bot.busy) {
+      dispatch({
+        type: "editMessage",
+        botId: bot.id,
+        messageId: lastUserMessage.id,
+        text: lastUserMessage.text ?? "",
+        attachments: lastUserMessage.attachments,
+      });
     }
   }, [lastUserMessage, bot.busy, bot.id, dispatch]);
 

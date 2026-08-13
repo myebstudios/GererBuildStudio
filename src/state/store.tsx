@@ -18,6 +18,16 @@ import type { TaskProject, TaskRecord } from "@/lib/taskBoard";
 
 export type { MausColor } from "@/lib/mascot";
 
+export interface Attachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  dataUrl?: string;
+  textContent?: string;
+  path?: string;
+}
+
 export interface OptionCardData {
   title: string;
   subtitle: string;
@@ -33,6 +43,7 @@ export interface Message {
   role: "bot" | "user";
   kind: "text" | "options" | "activity" | "screen";
   text?: string;
+  attachments?: Attachment[];
   card?: OptionCardData;
   /** activity messages: tool name + outcome */
   tool?: { name: string; ok?: boolean };
@@ -179,7 +190,7 @@ export type Action =
   | { type: "groupPatched"; group: Partial<Group> & { id: string } }
   | { type: "groupDeleted"; groupId: string }
   | { type: "createGroup"; memberIds: string[]; name?: string }
-  | { type: "sendGroup"; groupId: string; text: string }
+  | { type: "sendGroup"; groupId: string; text: string; attachments?: Attachment[] }
   | { type: "patchGroup"; groupId: string; patch: Partial<Pick<Group, "name" | "bulletin" | "memberIds" | "autoHandoffs">> }
   | { type: "deleteGroup"; groupId: string }
   | { type: "clearChat"; threadId: string }
@@ -190,8 +201,8 @@ export type Action =
   | { type: "instances"; instances: InstanceInfo[] }
   | { type: "configStatus"; config: ConfigStatus }
   | { type: "select"; id: string }
-  | { type: "send"; botId: string; text: string }
-  | { type: "editMessage"; botId: string; messageId: string; text: string }
+  | { type: "send"; botId: string; text: string; attachments?: Attachment[] }
+  | { type: "editMessage"; botId: string; messageId: string; text: string; attachments?: Attachment[] }
   | { type: "switchBranch"; botId: string; messageId: string }
   | { type: "threadActive"; threadId: string; activeLeafId: string }
   | { type: "answerCard"; botId: string; threadId?: string; messageId: string; answer: string }
@@ -754,13 +765,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "send":
           api(`/api/bots/${action.botId}/messages`, {
             method: "POST",
-            body: JSON.stringify({ text: action.text }),
+            body: JSON.stringify({ text: action.text, attachments: action.attachments }),
           }).catch(showError);
           break;
         case "editMessage":
           api(`/api/bots/${action.botId}/messages/${action.messageId}/edit`, {
             method: "POST",
-            body: JSON.stringify({ text: action.text }),
+            body: JSON.stringify({ text: action.text, attachments: action.attachments }),
           }).catch(showError);
           break;
         case "switchBranch":
@@ -869,7 +880,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         case "sendGroup":
           api(`/api/groups/${action.groupId}/messages`, {
             method: "POST",
-            body: JSON.stringify({ text: action.text }),
+            body: JSON.stringify({ text: action.text, attachments: action.attachments }),
           }).catch(showError);
           break;
         case "patchGroup":

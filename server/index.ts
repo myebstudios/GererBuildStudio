@@ -2,10 +2,10 @@
 // (upstream rule): the React app dispatches typed commands over HTTP and
 // folds one SSE event stream; every provider process runs here.
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { homedir } from "node:os";
-import { dirname, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import * as box from "./box.ts";
@@ -16,7 +16,7 @@ import type { RuntimeEvent } from "./contracts.ts";
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
-import { automaticHandoffBots, mentionedBots, Store, type Message } from "./store.ts";
+import { automaticHandoffBots, mentionedBots, Store, type Attachment, type Message } from "./store.ts";
 import { readRegisteredProjects, resolveProjectContext } from "./projects.ts";
 import {
   TaskConflictError,
@@ -327,11 +327,67 @@ function readCuaConnection(): { command: string; args: string[]; env: Record<str
   return null;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function saveAttachmentsToWorkspace(threadId: string, attachments?: Attachment[]): Attachment[] | undefined {
+  if (!attachments || !Array.isArray(attachments) || attachments.length === 0) return undefined;
+  const tag = threadId.replace(/[^\w-]/g, "");
+  const workspaceAttachmentsDir = join(DATA_DIR, "workspaces", tag, "attachments");
+  try {
+    mkdirSync(workspaceAttachmentsDir, { recursive: true });
+  } catch {}
+
+  return attachments.map((att) => {
+    const rawName = typeof att.name === "string" ? att.name : "attachment";
+    const base = basename(rawName).replace(/[^\w.-]/g, "_") || "attachment";
+    const filename = `${(att.id || "att").slice(0, 8)}_${base}`;
+    const filePath = join(workspaceAttachmentsDir, filename);
+
+    if (att.dataUrl && typeof att.dataUrl === "string") {
+      try {
+        const commaIdx = att.dataUrl.indexOf(",");
+        if (commaIdx !== -1) {
+          const base64Data = att.dataUrl.slice(commaIdx + 1);
+          const buffer = Buffer.from(base64Data, "base64");
+          writeFileSync(filePath, buffer);
+          return { ...att, path: filePath };
+        }
+      } catch (err) {
+        console.error(`Failed to save attachment ${att.name} to ${filePath}:`, err);
+      }
+    }
+    return { ...att, path: filePath };
+  });
+}
+
+function formatAttachmentContext(attachments?: Attachment[]): string {
+  if (!attachments || attachments.length === 0) return "";
+  const lines = ["[Attached files:]"];
+  for (const att of attachments) {
+    let line = `- ${att.name} (${att.mimeType || "application/octet-stream"}, ${formatBytes(att.size || 0)})`;
+    if (att.path) {
+      line += ` [Workspace path: ${att.path}]`;
+    }
+    lines.push(line);
+    if (att.textContent && att.textContent.length < 50000) {
+      const ext = att.name.includes(".") ? att.name.split(".").pop() : "";
+      lines.push("```" + (ext || ""));
+      lines.push(att.textContent);
+      lines.push("```");
+    }
+  }
+  return lines.join("\n");
+}
+
 // ── turn dispatch (upstream ProviderCommandReactor, miniature) ──────────
 async function startTurn(
   botId: string,
   text: string,
-  opts?: { commsDepth?: number; userMessage?: Message },
+  opts?: { commsDepth?: number; userMessage?: Message; attachments?: Attachment[] },
 ) {
   const bot = store.bot(botId);
   if (!bot) throw Object.assign(new Error("no such bot"), { status: 404 });
@@ -349,7 +405,8 @@ async function startTurn(
   // an edit hands us its already-branched user message; a plain send appends
   let userMessage = opts?.userMessage;
   if (!userMessage) {
-    userMessage = store.appendMessage(bot.threadId, { role: "user", kind: "text", text });
+    const savedAttachments = saveAttachmentsToWorkspace(bot.threadId, opts?.attachments);
+    userMessage = store.appendMessage(bot.threadId, { role: "user", kind: "text", text, attachments: savedAttachments });
     broadcast({ kind: "message", threadId: bot.threadId, message: userMessage });
   }
 
@@ -357,9 +414,12 @@ async function startTurn(
   // branch only — abandoned forks never reach the model
   const transcript = store
     .activePath(bot.threadId)
-    .filter((m) => m.kind === "text" && m.text && m.id !== userMessage.id)
+    .filter((m) => m.kind === "text" && (m.text || (m.attachments && m.attachments.length > 0)) && m.id !== userMessage.id)
     .slice(-40)
-    .map((m) => ({ role: m.role === "user" ? ("user" as const) : ("assistant" as const), text: m.text! }));
+    .map((m) => {
+      const attSummary = m.attachments?.length ? ` [Attached: ${m.attachments.map((a) => a.name).join(", ")}]` : "";
+      return { role: m.role === "user" ? ("user" as const) : ("assistant" as const), text: `${m.text || ""}${attSummary}`.trim() };
+    });
 
   // After a rewind (edit / branch switch) the provider's native session
   // still contains the abandoned branch: start a fresh session instead of
@@ -368,6 +428,8 @@ async function startTurn(
   // cleared only once the turn is actually dispatched — clearing it here
   // would cost the next attempt its history if this dispatch fails.
   const rewound = Boolean(bot.rewound);
+  const attPrompt = formatAttachmentContext(userMessage.attachments);
+  const promptBody = [text, attPrompt].filter(Boolean).join("\n\n");
   const turnText =
     rewound && instance.driverKind !== "grok" && transcript.length
       ? [
@@ -377,9 +439,9 @@ async function startTurn(
           "",
           "[Now reply to the user's latest message:]",
           "",
-          text,
+          promptBody,
         ].join("\n")
-      : text;
+      : promptBody;
 
   const persona = [
     `You are ${bot.name}, a personal bot in OpenMausBot.`,
@@ -443,6 +505,7 @@ async function startTurn(
       await instance.adapter.sendTurn({
         threadId: bot.threadId,
         text: turnText,
+        attachments: userMessage.attachments,
         model: bot.modelSelection.model,
         // a rewound thread never resumes the abandoned branch's session
         resumeCursor: rewound ? undefined : bot.resumeCursors[bot.modelSelection.instanceId],
@@ -528,9 +591,15 @@ function dropQueuedResponder(groupId: string, botId: string) {
 function serializeRoomContext(threadId: string, userName: string): string {
   return store
     .messagesFor(threadId)
-    .filter((m) => m.kind === "text" && m.text)
+    .filter((m) => m.kind === "text" && (m.text || (m.attachments && m.attachments.length > 0)))
     .slice(-GROUP_CONTEXT_MESSAGES)
-    .map((m) => `${m.role === "user" ? userName : (m.from?.name ?? "Bot")}: ${m.text}`)
+    .map((m) => {
+      const author = m.role === "user" ? userName : (m.from?.name ?? "Bot");
+      const attSummary = m.attachments?.length
+        ? ` [Attached: ${m.attachments.map((a) => a.name).join(", ")}]`
+        : "";
+      return `${author}: ${m.text || ""}${attSummary}`.trim();
+    })
     .join("\n");
 }
 
@@ -577,9 +646,11 @@ async function runGroupMemberTurn(
     .filter((b): b is NonNullable<typeof b> => Boolean(b))
     .map((b) => `@${b.name}${b.title ? ` (${b.title})` : ""}`)
     .join(", ");
-  const latestUserText = [...store.messagesFor(group.threadId)]
+  const latestUserMessage = [...store.messagesFor(group.threadId)]
     .reverse()
-    .find((message) => message.role === "user" && message.kind === "text")?.text ?? "";
+    .find((message) => message.role === "user" && message.kind === "text");
+  const latestUserText = latestUserMessage?.text ?? "";
+  const attPrompt = formatAttachmentContext(latestUserMessage?.attachments);
   const projectContext = resolveProjectContext([latestUserText, group.bulletin, bot.description]);
   const system = [
     `You are ${bot.name}, a bot in the room "${group.name}" in OpenMausBot.`,
@@ -593,7 +664,7 @@ async function runGroupMemberTurn(
     .filter(Boolean)
     .join("\n");
 
-  const text = `${serializeRoomContext(group.threadId, userName)}\n\n(Reply to the conversation above as ${bot.name}.)`;
+  const text = `${serializeRoomContext(group.threadId, userName)}${attPrompt ? `\n\n${attPrompt}` : ""}\n\n(Reply to the conversation above as ${bot.name}.)`;
 
   // run the turn and wait for it to settle, folding the reply text so a
   // chained @mention can be routed afterwards
@@ -663,10 +734,11 @@ async function runGroupMemberTurn(
   }
 }
 
-function startGroupTurn(groupId: string, text: string) {
+function startGroupTurn(groupId: string, text: string, attachments?: Attachment[]) {
   const group = store.group(groupId);
   if (!group) throw Object.assign(new Error("no such group"), { status: 404 });
-  const userMessage = store.appendMessage(group.threadId, { role: "user", kind: "text", text });
+  const savedAttachments = saveAttachmentsToWorkspace(group.threadId, attachments);
+  const userMessage = store.appendMessage(group.threadId, { role: "user", kind: "text", text, attachments: savedAttachments });
   broadcast({ kind: "message", threadId: group.threadId, message: userMessage });
 
   const members = group.memberIds
@@ -1077,8 +1149,11 @@ const server = createServer(async (req, res) => {
     if (m && method === "POST") {
       const body = await readBody(req);
       const text = String(body.text ?? "").trim();
-      if (!text) return json(res, 400, { error: "text required" });
-      startGroupTurn(m[1], text);
+      const attachments = Array.isArray(body.attachments) ? (body.attachments as Attachment[]) : undefined;
+      if (!text && (!attachments || attachments.length === 0)) {
+        return json(res, 400, { error: "text or attachment required" });
+      }
+      startGroupTurn(m[1], text, attachments);
       return json(res, 202, { ok: true });
     }
     m = path.match(/^\/api\/groups\/([\w-]+)\/interrupt$/);
@@ -1198,8 +1273,11 @@ const server = createServer(async (req, res) => {
     if (m && method === "POST") {
       const body = await readBody(req);
       const text = String(body.text ?? "").trim();
-      if (!text) return json(res, 400, { error: "text required" });
-      await startTurn(m[1], text);
+      const attachments = Array.isArray(body.attachments) ? (body.attachments as Attachment[]) : undefined;
+      if (!text && (!attachments || attachments.length === 0)) {
+        return json(res, 400, { error: "text or attachment required" });
+      }
+      await startTurn(m[1], text, { attachments });
       return json(res, 202, { ok: true });
     }
 
@@ -1214,7 +1292,10 @@ const server = createServer(async (req, res) => {
       if (!bot) return json(res, 404, { error: "no such bot" });
       const body = await readBody(req);
       const text = String(body.text ?? "").trim();
-      if (!text) return json(res, 400, { error: "text required" });
+      const attachments = Array.isArray(body.attachments) ? (body.attachments as Attachment[]) : undefined;
+      if (!text && (!attachments || attachments.length === 0)) {
+        return json(res, 400, { error: "text or attachment required" });
+      }
       // everything from here down is synchronous, so two racing edits can
       // never both get past this check: startTurn flips busy before the
       // next request is handled
@@ -1228,7 +1309,8 @@ const server = createServer(async (req, res) => {
           error: `provider instance "${bot.modelSelection.instanceId}" is unavailable — pick another model in settings`,
         });
       }
-      const message = store.branchMessage(bot.threadId, messageId, text);
+      const savedAttachments = saveAttachmentsToWorkspace(bot.threadId, attachments ?? source.attachments);
+      const message = store.branchMessage(bot.threadId, messageId, text, savedAttachments);
       if (!message) return json(res, 404, { error: "no such message" });
       store.patchBot(bot.id, { rewound: true });
       broadcast({ kind: "message", threadId: bot.threadId, message });

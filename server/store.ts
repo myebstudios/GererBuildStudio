@@ -6,8 +6,10 @@ import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
 import { DATA_DIR } from "./config.ts";
-import { newId, type ModelSelection, type ThreadId } from "./contracts.ts";
+import { newId, type Attachment, type ModelSelection, type ThreadId } from "./contracts.ts";
 import { pickBotName } from "./names.ts";
+
+export type { Attachment } from "./contracts.ts";
 
 export type MausColor =
   | "green"
@@ -43,6 +45,7 @@ export interface Message {
   role: "bot" | "user";
   kind: "text" | "options" | "activity" | "screen";
   text?: string;
+  attachments?: Attachment[];
   card?: OptionCardData;
   /** activity messages: tool name + outcome */
   tool?: { name: string; ok?: boolean };
@@ -357,7 +360,7 @@ export class Store {
 
   /** Fork the conversation: a new user message that replaces `sourceId`
    * (same parent, new text) and becomes the active leaf. */
-  branchMessage(threadId: string, sourceId: string, text: string): Message | null {
+  branchMessage(threadId: string, sourceId: string, text: string, attachments?: Attachment[]): Message | null {
     const t = this.thread(threadId);
     const source = t.messages.find((m) => m.id === sourceId);
     if (!source) return null;
@@ -367,6 +370,7 @@ export class Store {
       role: "user",
       kind: "text",
       text,
+      attachments: attachments !== undefined ? attachments : source.attachments,
       parentId: source.parentId ?? null,
     };
     t.messages.push(full);

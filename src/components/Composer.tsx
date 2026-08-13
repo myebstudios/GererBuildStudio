@@ -1,13 +1,15 @@
 import { track } from "@/lib/analytics";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, Clock, Mic, Square, X } from "lucide-react";
-import { useStore, type Bot, type Group } from "@/state/store";
+import { ArrowUp, Clock, Mic, Paperclip, Square, X } from "lucide-react";
+import { useStore, type Attachment, type Bot, type Group } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { MausAvatar } from "./Avatar";
 import { normalizeState } from "@/lib/mascot";
 import { insertProjectMention, projectMentionQueryAt } from "@/lib/projectMentions";
 import { useProjects } from "@/state/projects";
 import { ProjectSuggestionList } from "./ProjectSuggestionList";
+import { StagedAttachmentsTray } from "./AttachmentViewer";
+import { readFileAsAttachment } from "@/lib/attachments";
 
 /** The active @mention query at the caret: the text between an `@` that
  * starts a word and the caret. null = no mention being typed. */
@@ -41,12 +43,15 @@ export function Composer({
     ? (members?.find((b) => b.id === group.busyBotId)?.name ?? "A bot")
     : (bot?.name ?? "The bot");
   const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [recording, setRecording] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [caret, setCaret] = useState(0);
   const [highlight, setHighlight] = useState(0);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // what was typed before the mic went on — partials append after it
   const baseText = useRef("");
 
@@ -111,30 +116,85 @@ export function Composer({
     });
   };
 
+  const addFiles = async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    if (!list.length) return;
+    try {
+      const read = await Promise.all(list.map((f) => readFileAsAttachment(f)));
+      setAttachments((prev) => [...prev, ...read]);
+    } catch (e) {
+      console.error("Failed to read attachments:", e);
+    }
+  };
+
+  const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      addFiles(e.target.files);
+      e.target.value = "";
+    }
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const files = e.clipboardData?.files;
+    if (files && files.length > 0) {
+      addFiles(files);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+      addFiles(e.dataTransfer.files);
+    }
+  };
+
   // One message may be queued while the bot works; it auto-sends the moment
   // the turn settles. Enter during a turn queues instead of silently dying.
-  const [queued, setQueued] = useState<string | null>(null);
+  const [queued, setQueued] = useState<{ text: string; attachments: Attachment[] } | null>(null);
   const send = () => {
     const t = text.trim();
-    if (!t) return;
+    if (!t && attachments.length === 0) return;
+    const currentAttachments = attachments.length > 0 ? [...attachments] : undefined;
     if (busy) {
-      setQueued(t);
+      setQueued({ text: t, attachments: attachments });
       setText("");
+      setAttachments([]);
       return;
     }
     if (group) {
-      dispatch({ type: "sendGroup", groupId: group.id, text: t });
-      track("message_sent", { room: true });
+      dispatch({ type: "sendGroup", groupId: group.id, text: t, attachments: currentAttachments });
+      track("message_sent", { room: true, hasAttachments: Boolean(currentAttachments?.length) });
     } else if (bot) {
-      dispatch({ type: "send", botId: bot.id, text: t });
-      track("message_sent", { driver: bot.modelSelection?.instanceId });
+      dispatch({ type: "send", botId: bot.id, text: t, attachments: currentAttachments });
+      track("message_sent", { driver: bot.modelSelection?.instanceId, hasAttachments: Boolean(currentAttachments?.length) });
     }
     setText("");
+    setAttachments([]);
   };
+
   useEffect(() => {
     if (!busy && queued) {
-      if (group) dispatch({ type: "sendGroup", groupId: group.id, text: queued });
-      else if (bot) dispatch({ type: "send", botId: bot.id, text: queued });
+      const qAtt = queued.attachments.length > 0 ? queued.attachments : undefined;
+      if (group) dispatch({ type: "sendGroup", groupId: group.id, text: queued.text, attachments: qAtt });
+      else if (bot) dispatch({ type: "send", botId: bot.id, text: queued.text, attachments: qAtt });
       track("message_sent", { queued: true });
       setQueued(null);
     }
@@ -183,19 +243,39 @@ export function Composer({
     setRecording((r) => !r);
   };
 
+  const hasContent = Boolean(text.trim() || attachments.length > 0);
+
   return (
-    <div className="px-5 pb-5 pt-2">
+    <div
+      className="px-5 pb-5 pt-2"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {speechError && (
         <div className="mx-auto mb-2 max-w-[900px] rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
           {speechError}
         </div>
       )}
       <div className="relative mx-auto max-w-[900px]">
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          onChange={handleFilesSelected}
+          className="hidden"
+          aria-label="Upload files or images"
+        />
+
+        {/* Staged attachments tray */}
+        <StagedAttachmentsTray attachments={attachments} onRemove={handleRemoveAttachment} />
+
         {queued && (
           <div className="mb-2 flex items-center gap-2 rounded-lg border border-hairline/40 bg-panel px-3 py-2 text-[12.5px] text-ink-secondary">
             <Clock size={13} className="shrink-0" />
             <span className="min-w-0 flex-1 truncate">
-              Queued — sends when {busyName} finishes: “{queued}”
+              Queued — sends when {busyName} finishes: “{queued.text || (queued.attachments.length ? `[${queued.attachments.length} attachment(s)]` : "")}”
             </span>
             <button
               onClick={() => setQueued(null)}
@@ -240,7 +320,21 @@ export function Composer({
             ))}
           </div>
         )}
-        <div className="flex items-end gap-2 rounded-3xl border border-hairline/40 bg-raised/60 py-2 pl-3 pr-2">
+        <div
+          className={cn(
+            "flex items-end gap-2 rounded-3xl border bg-raised/60 py-2 pl-2 pr-2 transition-all",
+            isDragging ? "border-accent ring-2 ring-accent/30 bg-accent/5" : "border-hairline/40",
+          )}
+        >
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          aria-label="Attach images or files"
+          title="Attach files or images"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-secondary transition-colors hover:bg-raised hover:text-ink focus-visible:outline-none"
+        >
+          <Paperclip size={18} />
+        </button>
         <textarea
           ref={inputRef}
           rows={1}
@@ -250,6 +344,7 @@ export function Composer({
             setCaret(e.target.selectionStart ?? e.target.value.length);
             setDismissed(null);
           }}
+          onPaste={handlePaste}
           onKeyUp={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
           onClick={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
           onKeyDown={(e) => {
@@ -273,7 +368,7 @@ export function Composer({
               }
             }
             // an empty composer + ArrowUp = edit your last message (like a chat app)
-            if (e.key === "ArrowUp" && !text && onEditLast) {
+            if (e.key === "ArrowUp" && !text && !attachments.length && onEditLast) {
               e.preventDefault();
               onEditLast();
               return;
@@ -288,11 +383,13 @@ export function Composer({
           placeholder={
             recording
               ? "Listening…"
-              : busy
-                ? `${busyName} is working — Enter queues your message`
-                : group
-                  ? `Message ${group.name} — @ for bots, # for projects`
-                  : `Message ${bot?.name ?? ""} — # for projects`
+              : isDragging
+                ? "Drop files to attach…"
+                : busy
+                  ? `${busyName} is working — Enter queues your message`
+                  : group
+                    ? `Message ${group.name} — @ for bots, # for projects`
+                    : `Message ${bot?.name ?? ""} — # for projects`
           }
           aria-label={`Message ${group ? group.name : (bot?.name ?? "")}`}
           className="max-h-40 w-full resize-none self-center bg-transparent py-1 text-[15px] leading-6 text-ink placeholder:text-ink-secondary focus:outline-none"
@@ -310,7 +407,7 @@ export function Composer({
             <Square size={14} className="fill-current" />
           </button>
         )}
-        {!busy && !text.trim() && (
+        {!busy && !hasContent && (
           <button
             onClick={toggleMic}
             aria-label={recording ? "Stop dictation" : "Start dictation"}
@@ -325,7 +422,7 @@ export function Composer({
             <Mic size={18} />
           </button>
         )}
-        {text.trim() && (
+        {hasContent && (
           <button
             onClick={send}
             aria-label={busy ? "Queue message" : "Send message"}

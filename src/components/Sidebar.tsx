@@ -25,7 +25,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { useStore, formatTime, visibleMessages, type Bot, type Group } from "@/state/store";
+import { useStore, formatTime, visibleMessages, type Bot, type Group, type Message } from "@/state/store";
 import { MausAvatar, InitialsAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { useUpdaterState } from "@/lib/updater";
@@ -108,16 +108,27 @@ function UpdateButton() {
   );
 }
 
+function formatMessagePreview(m: Message): string {
+  if (m.kind === "options" && m.card) return m.card.title;
+  if (m.kind === "activity" && m.tool) return m.tool.name;
+  if (m.kind === "screen") return "Screen frame";
+  const attLabel = m.attachments && m.attachments.length > 0
+    ? m.attachments.length === 1
+      ? m.attachments[0].mimeType?.startsWith("image/") ? `[Image: ${m.attachments[0].name}]` : `[File: ${m.attachments[0].name}]`
+      : `[${m.attachments.length} attachments]`
+    : "";
+  if (m.text && attLabel) return `${attLabel} ${m.text}`;
+  if (attLabel) return attLabel;
+  return m.text ?? "";
+}
+
 function preview(bot: Bot): string {
   if (bot.busy) return "Working…";
   // the visible branch's tail — bot.messages holds every fork, so its last
   // entry can belong to a version the user switched away from
   const last = visibleMessages(bot).at(-1);
   if (!last) return "";
-  if (last.kind === "options" && last.card) return last.card.title;
-  if (last.kind === "activity" && last.tool) return last.tool.name;
-  if (last.kind === "screen") return "Screen frame";
-  return last.text ?? "";
+  return formatMessagePreview(last);
 }
 
 interface MenuState {
@@ -139,9 +150,9 @@ function groupPreview(group: Group, bots: Bot[]): string {
   }
   const last = group.messages.at(-1);
   if (!last) return "No messages yet";
-  const text = last.kind === "activity" && last.tool ? last.tool.name : (last.text ?? "");
-  if (last.role === "user") return `You: ${text}`;
-  return last.from ? `${last.from.name}: ${text}` : text;
+  const formatted = formatMessagePreview(last);
+  if (last.role === "user") return `You: ${formatted}`;
+  return last.from ? `${last.from.name}: ${formatted}` : formatted;
 }
 
 /** Room avatar: 2–3 overlapping mauses in the same 56px slot a bot gets. */

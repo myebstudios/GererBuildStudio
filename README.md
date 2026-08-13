@@ -124,7 +124,24 @@ Secrets are write-only: the UI only ever sees "configured" flags.
 composer mic (on-device Apple speech recognition — desktop app) · SupaMaus cursor mascots with role-aware
 expressions · screenshots of the bot's work folded into the transcript · a local Projects screen for adding
 existing folders, creating new workspaces, and cloning GitHub repositories to a chosen path · stable
-`#project` references that give agents trusted workspace context from chats, room bulletins, and bot descriptions.
+`#project` references that give agents trusted workspace context from chats, room bulletins, and bot descriptions ·
+a shared task board where users and agents coordinate structured project work.
+
+### Share work through the Task Board
+
+Task Board is a live four-column Kanban workspace for both the user and every agent: **Todo**, **Doing**,
+**Review**, and **Done**. Tasks can carry a registered project, agent assignment, type, priority, tags,
+due date, description, acceptance criteria, and an attributed activity trail. Search and filters compose
+across project, agent, status, type, priority, tag, and overdue state.
+
+Agents receive task tools during normal turns. They can list or create work, atomically claim an unassigned
+task, keep its status current, or delegate it to another visible bot. Every update is revision-checked, so
+two agents cannot silently claim or overwrite the same task; a conflict returns the latest record to the
+losing agent and refreshes the UI. Completed agent work should move to **Review** for user verification.
+
+Task assignment records intent—it does not launch a bot in the background. A user-initiated turn is still
+required for an agent to act. Runtime tasks are stored locally in `~/.openmausbot/tasks.json`; they are
+separate from the repository-maintenance workflow in `docs/dev/fixes/`.
 
 ### Refer to projects and bots
 
@@ -177,6 +194,7 @@ flowchart LR
 | App | `src/` | The chat shell. Server-backed store, one reducer, zero client-side transports. |
 | Desktop | `electron/` | macOS + Windows shells: dictation helper (SFSpeechRecognizer, macOS only), local screen capture, CUA bridge (macOS only). |
 | Projects | `electron/projects.mjs`, `server/projects.ts`, `src/state/projects.tsx` | Desktop-only local folder registry, stable `#project` handles, trusted turn context, directory creation, and shell-free GitHub cloning. |
+| Task Board | `server/tasks.ts`, `src/components/TaskBoardScreen.tsx` | Atomic local task persistence, revision-safe claims and updates, live Kanban UI, filters, assignment, and agent task tools. |
 
 ## Quick start
 

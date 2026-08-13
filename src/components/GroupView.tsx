@@ -201,8 +201,16 @@ export function GroupView({ group }: { group: Group }) {
             />
           </div>
         ) : (
-          <button
+          <div
+            role="button"
+            tabIndex={0}
             onClick={() => setBulletinOpen(true)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setBulletinOpen(true);
+              }
+            }}
             className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-raised/40"
             title="Room bulletin — shared instructions for every bot here"
           >
@@ -210,7 +218,7 @@ export function GroupView({ group }: { group: Group }) {
             <span className={cn("truncate text-[12.5px]", group.bulletin ? "text-ink-secondary" : "text-ink-secondary/60")}>
               {group.bulletin ? <ProjectMentionText text={group.bulletin.split("\n")[0]} /> : "Add room instructions…"}
             </span>
-          </button>
+          </div>
         )}
       </div>
 

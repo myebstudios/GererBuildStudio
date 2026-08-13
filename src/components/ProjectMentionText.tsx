@@ -21,7 +21,10 @@ export function ProjectMentionText({ text, className }: { text: string; classNam
               type="button"
               disabled={match.project.missing}
               title={match.project.missing ? `${match.project.name} folder is missing` : `Open ${match.project.path}`}
-              onClick={() => void open(match.project).catch(() => undefined)}
+              onClick={(event) => {
+                event.stopPropagation();
+                void open(match.project).catch(() => undefined);
+              }}
               className={cn(
                 "inline rounded-md bg-accent/12 px-1 py-0.5 font-medium text-accent hover:bg-accent/20",
                 match.project.missing && "cursor-not-allowed text-warning opacity-70",

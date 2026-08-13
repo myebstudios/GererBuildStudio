@@ -1,5 +1,5 @@
 ---
-status: todo
+status: doing
 created: 2026-08-13
 updated: 2026-08-13
 scope: project mentions

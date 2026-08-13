@@ -77,4 +77,4 @@ Rollback is a scoped Git revert. The new room queue fields are transient and add
 
 ## Approval
 
-Status: awaiting user approval
+Status: approved by user on 2026-08-13

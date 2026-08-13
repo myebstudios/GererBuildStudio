@@ -427,7 +427,7 @@ async function startTurn(
       // still be the TARGET of ask_bot regardless of its driver.
       const canMessagePeers =
         commsDepth < MAX_COMMS_DEPTH && store.bots.some((candidate) => candidate.id !== bot.id && !candidate.hidden);
-      if (instance.adapter.capabilities.agentsMcp === true) {
+      if (commsDepth < MAX_COMMS_DEPTH && instance.adapter.capabilities.agentsMcp === true) {
         integrations.agents = agentsIntegration(bot.id, commsDepth);
       }
       // @mentions in the user's message (the composer's tagging UI) become

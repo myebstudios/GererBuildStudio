@@ -123,7 +123,7 @@ const TOOLS = [
       required: ["task_id", "revision", "bot_id"],
     },
   },
-];
+].filter((tool) => DEPTH < 1 || (tool.name !== "list_bots" && tool.name !== "ask_bot"));
 
 type Json = Record<string, unknown>;
 const send = (msg: Json) => process.stdout.write(JSON.stringify(msg) + "\n");

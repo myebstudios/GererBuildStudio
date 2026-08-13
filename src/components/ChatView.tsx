@@ -24,6 +24,7 @@ import { Composer } from "./Composer";
 import { ModelPicker } from "./ModelPicker";
 import { ReactionBar, ReactionChips } from "./Reactions";
 import { cn } from "@/lib/cn";
+import { ProjectMentionText } from "./ProjectMentionText";
 
 /** Long user messages collapse behind a fade so pasted walls of text don't
  * bury the conversation; bots get full markdown. */
@@ -280,7 +281,7 @@ function Bubble({
               <div
                 className={cn(collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}
               >
-                {text}
+                <ProjectMentionText text={text} />
               </div>
               {collapsible && (
                 <button onClick={() => setExpanded(true)} className="mt-1 text-[12.5px] text-ink-secondary hover:text-ink">
@@ -473,7 +474,7 @@ const MessagesList = memo(function MessagesList({
           <MausAvatar color={bot.color} state="idle" size={64} motion="none" motionKey={0} />
           <div className="text-[17px] font-semibold text-ink">{bot.name}</div>
           <div className="max-w-[360px] text-[14px] text-ink-secondary">
-            {bot.description || "Send a message to start the conversation."}
+            {bot.description ? <ProjectMentionText text={bot.description} /> : "Send a message to start the conversation."}
           </div>
         </div>
       )}

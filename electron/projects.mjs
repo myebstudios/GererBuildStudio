@@ -6,7 +6,7 @@ import path from "node:path";
 
 const PROJECTS_FILE = "projects.json";
 const MAX_GIT_ERROR_LENGTH = 8_000;
-const PROJECT_MENTION_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
+const PROJECT_MENTION_PATTERN = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;
 
 function projectError(message, cause) {
   const error = new Error(message, cause ? { cause } : undefined);

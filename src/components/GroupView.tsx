@@ -12,6 +12,8 @@ import { ChatMarkdown } from "./ChatMarkdown";
 import { Composer } from "./Composer";
 import { ReactionBar, ReactionChips } from "./Reactions";
 import { cn } from "@/lib/cn";
+import { ProjectMentionText } from "./ProjectMentionText";
+import { ProjectMentionTextarea } from "./ProjectMentionTextarea";
 
 function dayLabel(at: number): string {
   const d = new Date(at);
@@ -78,7 +80,7 @@ const Transcript = memo(function Transcript({
                   )}
                   title={new Date(m.at).toLocaleString()}
                 >
-                  {user ? m.text : <ChatMarkdown text={m.text} />}
+                  {user ? <ProjectMentionText text={m.text} /> : <ChatMarkdown text={m.text} />}
                 </div>
                 {!user && <ReactionBar threadId={group.threadId} message={m} />}
                 <span className="self-end pb-1 text-[11px] tabular-nums text-ink-secondary/70 opacity-0 transition-opacity group-hover:opacity-100">
@@ -181,10 +183,10 @@ export function GroupView({ group }: { group: Group }) {
       <div className="mx-auto w-full max-w-[900px] px-5">
         {bulletinOpen ? (
           <div className="mb-1 rounded-lg border border-hairline/40 bg-panel p-2">
-            <textarea
+            <ProjectMentionTextarea
               autoFocus
               value={bulletinDraft}
-              onChange={(e) => setBulletinDraft(e.target.value)}
+              onValueChange={setBulletinDraft}
               onBlur={saveBulletin}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveBulletin();
@@ -193,7 +195,7 @@ export function GroupView({ group }: { group: Group }) {
                   setBulletinOpen(false);
                 }
               }}
-              placeholder="Room instructions — every bot in this room follows them (who does what, tone, goals, a task checklist…)"
+              placeholder="Room instructions — use # to give every bot project context"
               rows={4}
               className="w-full resize-none bg-transparent text-[13px] leading-relaxed text-ink placeholder:text-ink-secondary focus:outline-none"
             />
@@ -206,7 +208,7 @@ export function GroupView({ group }: { group: Group }) {
           >
             <Pin size={12} className="shrink-0 text-ink-secondary" />
             <span className={cn("truncate text-[12.5px]", group.bulletin ? "text-ink-secondary" : "text-ink-secondary/60")}>
-              {group.bulletin.split("\n")[0] || "Add room instructions…"}
+              {group.bulletin ? <ProjectMentionText text={group.bulletin.split("\n")[0]} /> : "Add room instructions…"}
             </span>
           </button>
         )}
@@ -245,7 +247,7 @@ export function GroupView({ group }: { group: Group }) {
               </div>
               <div className="text-[17px] font-semibold text-ink">{group.name}</div>
               <div className="max-w-[380px] text-[14px] text-ink-secondary">
-                Mention a bot with @ to bring them in — they see the whole conversation.
+                Mention a bot with @ to bring them in, and a project with # to share its workspace.
               </div>
             </div>
           )}

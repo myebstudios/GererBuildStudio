@@ -9,6 +9,7 @@ import {
 } from "@/lib/mascot";
 import { ModelPicker } from "./ModelPicker";
 import { cn } from "@/lib/cn";
+import { ProjectMentionTextarea } from "./ProjectMentionTextarea";
 
 function Field({
   label,
@@ -140,11 +141,11 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             />
           </Field>
           <Field label="Description">
-            <textarea
+            <ProjectMentionTextarea
               className={cn(inputCls, "min-h-[96px] resize-none")}
-              placeholder="What this agent is for"
+              placeholder="What this agent is for — use # for its default project"
               value={bot.description}
-              onChange={(e) => patch({ description: e.target.value })}
+              onValueChange={(description) => patch({ description })}
             />
           </Field>
 

@@ -5,6 +5,9 @@ import { useStore, type Bot, type Group } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { MausAvatar } from "./Avatar";
 import { normalizeState } from "@/lib/mascot";
+import { insertProjectMention, projectMentionQueryAt } from "@/lib/projectMentions";
+import { useProjects } from "@/state/projects";
+import { ProjectSuggestionList } from "./ProjectSuggestionList";
 
 /** The active @mention query at the caret: the text between an `@` that
  * starts a word and the caret. null = no mention being typed. */
@@ -30,6 +33,7 @@ export function Composer({
   onEditLast?: () => void;
 }) {
   const { state, dispatch } = useStore();
+  const { projects } = useProjects();
   // Unified target: a 1:1 bot thread or a room. In a room the @ picker
   // offers the members (Buzz rule: only mentioned bots reply).
   const busy = group ? Boolean(group.busyBotId) : Boolean(bot?.busy);
@@ -41,23 +45,34 @@ export function Composer({
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [caret, setCaret] = useState(0);
   const [highlight, setHighlight] = useState(0);
-  const [dismissedAt, setDismissedAt] = useState<number | null>(null); // Esc'd this @
+  const [dismissed, setDismissed] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // what was typed before the mic went on — partials append after it
   const baseText = useRef("");
 
   // ── @mention picker (tag another bot; the agent reaches it via ask_bot) ──
-  const mention = mentionQueryAt(text, caret);
-  const candidates = useMemo(() => {
-    if (!mention || mention.start === dismissedAt) return [];
+  const botMention = mentionQueryAt(text, caret);
+  const projectMention = projectMentionQueryAt(text, caret);
+  const mentionKind = projectMention && (!botMention || projectMention.start > botMention.start) ? "project" : "bot";
+  const mention = mentionKind === "project" ? projectMention : botMention;
+  const botCandidates = useMemo(() => {
+    if (mentionKind !== "bot" || !botMention || dismissed === `bot:${botMention.start}`) return [];
     const pool = group ? (members ?? []) : state.bots.filter((b) => b.id !== bot?.id && !b.hidden);
-    const q = mention.query.trim().toLowerCase();
+    const q = botMention.query.trim().toLowerCase();
     // "@Scout " — the full name plus a space — is a COMPLETED tag, not a
     // search: keep the picker closed so Enter sends instead of re-picking
-    if (mention.query.endsWith(" ") && pool.some((b) => b.name.toLowerCase() === q)) return [];
+    if (botMention.query.endsWith(" ") && pool.some((b) => b.name.toLowerCase() === q)) return [];
     return pool.filter((b) => !q || b.name.toLowerCase().includes(q)).slice(0, 6);
-  }, [mention, dismissedAt, state.bots, bot?.id, group, members]);
-  const pickerOpen = candidates.length > 0;
+  }, [botMention, dismissed, state.bots, bot?.id, group, members, mentionKind]);
+  const projectCandidates = useMemo(() => {
+    if (mentionKind !== "project" || !projectMention || dismissed === `project:${projectMention.start}`) return [];
+    const q = projectMention.query.toLowerCase();
+    return (projects ?? [])
+      .filter((project) => !q || project.mention.includes(q) || project.name.toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [dismissed, mentionKind, projectMention, projects]);
+  const candidateCount = mentionKind === "project" ? projectCandidates.length : botCandidates.length;
+  const pickerOpen = candidateCount > 0;
 
   useEffect(() => setHighlight(0), [mention?.start, mention?.query]);
 
@@ -69,18 +84,30 @@ export function Composer({
     el.style.height = `${el.scrollHeight}px`;
   }, [text]);
 
-  const pickMention = (peer: Bot) => {
-    if (!mention) return;
+  const pickBotMention = (peer: Bot) => {
+    if (!botMention) return;
     const after = text.slice(caret);
-    const next = `${text.slice(0, mention.start)}@${peer.name} ${after}`;
+    const next = `${text.slice(0, botMention.start)}@${peer.name} ${after}`;
     setText(next);
-    const newCaret = mention.start + peer.name.length + 2;
+    const newCaret = botMention.start + peer.name.length + 2;
     setCaret(newCaret);
     // picking completes this tag — close the popup so the next Enter sends
-    setDismissedAt(mention.start);
+    setDismissed(`bot:${botMention.start}`);
     requestAnimationFrame(() => {
       inputRef.current?.focus();
       inputRef.current?.setSelectionRange(newCaret, newCaret);
+    });
+  };
+
+  const pickProjectMention = (projectMentionHandle: string) => {
+    if (!projectMention) return;
+    const next = insertProjectMention(text, caret, projectMention, projectMentionHandle);
+    setText(next.text);
+    setCaret(next.caret);
+    setDismissed(`project:${projectMention.start}`);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.caret, next.caret);
     });
   };
 
@@ -179,18 +206,27 @@ export function Composer({
             </button>
           </div>
         )}
-        {pickerOpen && (
+        {pickerOpen && mentionKind === "project" && (
+          <ProjectSuggestionList
+            projects={projectCandidates}
+            highlight={highlight}
+            onHighlight={setHighlight}
+            onPick={(project) => pickProjectMention(project.mention)}
+            className="absolute bottom-full left-2 mb-2"
+          />
+        )}
+        {pickerOpen && mentionKind === "bot" && (
           <div
             role="listbox"
             aria-label="Tag a bot"
             className="absolute bottom-full left-2 z-20 mb-2 w-72 overflow-hidden rounded-xl border border-hairline/40 bg-raised shadow-lg"
           >
-            {candidates.map((peer, i) => (
+            {botCandidates.map((peer, i) => (
               <button
                 key={peer.id}
                 role="option"
                 aria-selected={i === highlight}
-                onClick={() => pickMention(peer)}
+                onClick={() => pickBotMention(peer)}
                 onMouseEnter={() => setHighlight(i)}
                 className={cn(
                   "flex w-full items-center gap-2.5 px-3 py-2 text-left",
@@ -212,7 +248,7 @@ export function Composer({
           onChange={(e) => {
             setText(e.target.value);
             setCaret(e.target.selectionStart ?? e.target.value.length);
-            setDismissedAt(null);
+            setDismissed(null);
           }}
           onKeyUp={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
           onClick={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
@@ -221,17 +257,18 @@ export function Composer({
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();
                 const delta = e.key === "ArrowDown" ? 1 : -1;
-                setHighlight((h) => (h + delta + candidates.length) % candidates.length);
+                setHighlight((h) => (h + delta + candidateCount) % candidateCount);
                 return;
               }
               if (e.key === "Enter" || e.key === "Tab") {
                 e.preventDefault();
-                pickMention(candidates[highlight]);
+                if (mentionKind === "project") pickProjectMention(projectCandidates[highlight].mention);
+                else pickBotMention(botCandidates[highlight]);
                 return;
               }
               if (e.key === "Escape") {
                 e.preventDefault();
-                setDismissedAt(mention?.start ?? null);
+                setDismissed(mention ? `${mentionKind}:${mention.start}` : null);
                 return;
               }
             }
@@ -254,8 +291,8 @@ export function Composer({
               : busy
                 ? `${busyName} is working — Enter queues your message`
                 : group
-                  ? `Message ${group.name} — @ to bring a bot in`
-                  : `Message ${bot?.name ?? ""}`
+                  ? `Message ${group.name} — @ for bots, # for projects`
+                  : `Message ${bot?.name ?? ""} — # for projects`
           }
           aria-label={`Message ${group ? group.name : (bot?.name ?? "")}`}
           className="max-h-40 w-full resize-none self-center bg-transparent py-1 text-[15px] leading-6 text-ink placeholder:text-ink-secondary focus:outline-none"

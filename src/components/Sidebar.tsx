@@ -1,6 +1,7 @@
 import { track } from "@/lib/analytics";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  AlertTriangle,
   ArrowDownToLine,
   BellDot,
   Bot as BotIcon,
@@ -8,6 +9,7 @@ import {
   ClipboardCopy,
   Copy,
   EyeOff,
+  Eraser,
   FolderPlus,
   Loader2,
   Pencil,
@@ -123,6 +125,13 @@ interface MenuState {
   y: number;
 }
 
+interface ClearTarget {
+  id: string;
+  threadId: string;
+  name: string;
+  kind: "chat" | "room";
+}
+
 function groupPreview(group: Group, bots: Bot[]): string {
   if (group.busyBotId) {
     return `${bots.find((b) => b.id === group.busyBotId)?.name ?? "A bot"} is working…`;
@@ -171,6 +180,7 @@ function GroupListItem({ group, onMenu }: { group: Group; onMenu: (menu: { group
   const last = group.messages.at(-1);
   return (
     <button
+      data-conversation-id={group.id}
       onClick={() => dispatch({ type: "select", id: group.id })}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -196,7 +206,15 @@ function GroupListItem({ group, onMenu }: { group: Group; onMenu: (menu: { group
   );
 }
 
-function RoomContextMenu({ menu, onClose }: { menu: { groupId: string; x: number; y: number }; onClose: () => void }) {
+function RoomContextMenu({
+  menu,
+  onClose,
+  onClear,
+}: {
+  menu: { groupId: string; x: number; y: number };
+  onClose: () => void;
+  onClear: (target: ClearTarget) => void;
+}) {
   const { state, dispatch } = useStore();
   const group = state.groups.find((g) => g.id === menu.groupId);
 
@@ -216,8 +234,14 @@ function RoomContextMenu({ menu, onClose }: { menu: { groupId: string; x: number
   }, [onClose]);
 
   if (!group) return null;
-  const top = Math.min(menu.y, window.innerHeight - 120);
+  const top = Math.min(menu.y, window.innerHeight - 160);
   const left = Math.min(menu.x, window.innerWidth - 240);
+  const clearDisabled = Boolean(group.busyBotId) || (group.queuedBotIds?.length ?? 0) > 0 || group.messages.length === 0;
+  const clearHint = group.messages.length === 0
+    ? "This room has no history to clear"
+    : clearDisabled
+      ? "Wait for the room's agents to finish before clearing"
+      : "Permanently clear this room's messages";
   return (
     <div
       data-room-menu
@@ -233,6 +257,21 @@ function RoomContextMenu({ menu, onClose }: { menu: { groupId: string; x: number
       >
         <ClipboardCopy size={16} className="text-ink-secondary" />
         Copy conversation ID
+      </button>
+      <button
+        disabled={clearDisabled}
+        title={clearHint}
+        onClick={() => {
+          onClear({ id: group.id, threadId: group.threadId, name: group.name, kind: "room" });
+          onClose();
+        }}
+        className={cn(
+          "flex w-full items-center gap-3 px-3.5 py-2 text-left text-[14px] text-danger",
+          clearDisabled ? "cursor-default opacity-40" : "hover:bg-raised/70",
+        )}
+      >
+        <Eraser size={16} />
+        Clear chat history
       </button>
       <button
         onClick={() => {
@@ -320,7 +359,15 @@ function NewRoomPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-function BotContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }) {
+function BotContextMenu({
+  menu,
+  onClose,
+  onClear,
+}: {
+  menu: MenuState;
+  onClose: () => void;
+  onClear: (target: ClearTarget) => void;
+}) {
   const { state, dispatch } = useStore();
   const bot = state.bots.find((b) => b.id === menu.botId);
 
@@ -402,6 +449,16 @@ function BotContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => voi
           void navigator.clipboard?.writeText(bot.threadId);
         }),
         divider("d3"),
+        item(<Eraser size={16} />, "Clear chat history", () =>
+          onClear({ id: bot.id, threadId: bot.threadId, name: bot.name, kind: "chat" }), {
+          danger: true,
+          disabled: Boolean(bot.busy) || bot.messages.length === 0,
+          hint: bot.messages.length === 0
+            ? "This chat has no history to clear"
+            : bot.busy
+              ? "Wait for the agent to finish before clearing"
+              : "Permanently clear this chat's messages",
+        }),
         item(<EyeOff size={16} className="text-ink-secondary" />, "Hide from sidebar", () =>
           dispatch({ type: "updateBot", botId: bot.id, patch: { hidden: true } }),
         ),
@@ -422,6 +479,7 @@ function BotListItem({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => v
   const last = visible.at(-1);
   return (
     <button
+      data-conversation-id={bot.id}
       onClick={() => dispatch({ type: "select", id: bot.id })}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -464,12 +522,96 @@ function BotListItem({ bot, onMenu }: { bot: Bot; onMenu: (menu: MenuState) => v
   );
 }
 
+function ClearChatDialog({
+  target,
+  onClose,
+  onConfirm,
+}: {
+  target: ClearTarget;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    cancelRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled])") ?? [])];
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="clear-chat-title"
+        aria-describedby="clear-chat-description"
+        className="w-full max-w-[420px] rounded-2xl border border-hairline/50 bg-card p-5 shadow-2xl shadow-black/70"
+      >
+        <div className="mb-4 flex items-start gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-danger/10 text-danger">
+            <AlertTriangle size={20} />
+          </span>
+          <div className="min-w-0">
+            <h2 id="clear-chat-title" className="text-[16px] font-semibold text-ink">
+              Clear history {target.kind === "room" ? `in ${target.name}` : `with ${target.name}`}?
+            </h2>
+            <p id="clear-chat-description" className="mt-1 text-[13.5px] leading-relaxed text-ink-secondary">
+              This permanently removes every message and activity from this conversation. {target.name} will remain, but this history cannot be recovered.
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            ref={cancelRef}
+            onClick={onClose}
+            className="rounded-lg bg-raised px-3.5 py-2 text-[14px] font-medium text-ink hover:brightness-110"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="rounded-lg bg-danger px-3.5 py-2 text-[14px] font-medium text-white hover:brightness-110"
+          >
+            Clear history
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Sidebar() {
   const { state, dispatch } = useStore();
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [roomMenu, setRoomMenu] = useState<{ groupId: string; x: number; y: number } | null>(null);
   const [plusOpen, setPlusOpen] = useState(false);
   const [newRoom, setNewRoom] = useState(false);
+  const [clearTarget, setClearTarget] = useState<ClearTarget | null>(null);
   const [query, setQuery] = useState("");
 
   const q = query.trim().toLowerCase();
@@ -484,6 +626,15 @@ export function Sidebar() {
     )
     .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false));
   const visibleGroups = state.groups.filter((g) => !q || g.name.toLowerCase().includes(q));
+  const closeClearDialog = () => {
+    const targetId = clearTarget?.id;
+    setClearTarget(null);
+    if (targetId) {
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>(`[data-conversation-id="${targetId}"]`)?.focus();
+      });
+    }
+  };
 
   return (
     <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-hairline/40 bg-panel">
@@ -610,9 +761,19 @@ export function Sidebar() {
         </div>
       </div>
 
-      {menu && <BotContextMenu menu={menu} onClose={() => setMenu(null)} />}
-      {roomMenu && <RoomContextMenu menu={roomMenu} onClose={() => setRoomMenu(null)} />}
+      {menu && <BotContextMenu menu={menu} onClose={() => setMenu(null)} onClear={setClearTarget} />}
+      {roomMenu && <RoomContextMenu menu={roomMenu} onClose={() => setRoomMenu(null)} onClear={setClearTarget} />}
       {newRoom && <NewRoomPanel onClose={() => setNewRoom(false)} />}
+      {clearTarget && (
+        <ClearChatDialog
+          target={clearTarget}
+          onClose={closeClearDialog}
+          onConfirm={() => {
+            dispatch({ type: "clearChat", threadId: clearTarget.threadId });
+            closeClearDialog();
+          }}
+        />
+      )}
     </aside>
   );
 }

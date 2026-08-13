@@ -60,4 +60,4 @@ Rollback is a scoped Git revert. No data migration or persisted schema change is
 
 ## Approval
 
-Status: awaiting user approval
+Status: approved by user on 2026-08-13

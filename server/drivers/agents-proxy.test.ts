@@ -16,8 +16,25 @@ const TOKEN = "test-comms-token";
 let stub: Server;
 let stubPort = 0;
 let lastAuth: string | undefined;
+let lastBotHeader: string | undefined;
 let lastAskBody: any = null;
 let askResponse: unknown = { botName: "Helper", text: "hi from helper" };
+let lastTaskRequest: { method?: string; url?: string; body?: any } | null = null;
+let taskStatus = 200;
+const task = {
+  id: "task-one",
+  title: "Build board",
+  description: "Shared work",
+  acceptanceCriteria: ["Agents can claim it"],
+  status: "todo",
+  type: "feature",
+  priority: "high",
+  tags: ["agents"],
+  dueAt: null,
+  revision: 3,
+  project: { id: "project-one", name: "Studio", mention: "studio", available: true, path: "/workspace/studio" },
+  assignee: null,
+};
 
 let child: ChildProcess;
 const pending = new Map<number, (msg: any) => void>();
@@ -38,6 +55,7 @@ const callTool = (name: string, args: unknown) => rpc("tools/call", { name, argu
 beforeAll(async () => {
   stub = createServer((req, res) => {
     lastAuth = req.headers.authorization;
+    lastBotHeader = req.headers["x-omb-bot-id"] as string | undefined;
     if (req.headers.authorization !== `Bearer ${TOKEN}`) {
       res.writeHead(401, { "content-type": "application/json" });
       return res.end(JSON.stringify({ error: "unauthorized" }));
@@ -57,6 +75,22 @@ beforeAll(async () => {
         lastAskBody = JSON.parse(data);
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(askResponse));
+      });
+      return;
+    }
+    if (req.method === "GET" && req.url?.startsWith("/api/internal/tasks")) {
+      lastTaskRequest = { method: req.method, url: req.url };
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ tasks: [task] }));
+    }
+    if (req.url?.startsWith("/api/internal/tasks") && ["POST", "PATCH"].includes(req.method ?? "")) {
+      let data = "";
+      req.on("data", (c) => (data += c));
+      req.on("end", () => {
+        lastTaskRequest = { method: req.method, url: req.url, body: data ? JSON.parse(data) : {} };
+        res.writeHead(taskStatus, { "content-type": "application/json" });
+        res.end(JSON.stringify(taskStatus === 409 ? { error: "stale revision", latest: task } : { task }));
+        taskStatus = 200;
       });
       return;
     }
@@ -97,11 +131,13 @@ afterAll(async () => {
 });
 
 describe("agents-proxy MCP surface", () => {
-  it("answers the MCP handshake and lists both tools", async () => {
+  it("answers the MCP handshake and lists communication and task tools", async () => {
     const init = await rpc("initialize", { protocolVersion: "2024-11-05" });
     expect(init.result.serverInfo.name).toContain("agents");
     const list = await rpc("tools/list");
-    expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual(["list_bots", "ask_bot"]);
+    expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual([
+      "list_bots", "ask_bot", "list_tasks", "create_task", "claim_task", "update_task", "delegate_task",
+    ]);
   });
 
   it("list_bots renders the roster and authenticates with the shared token", async () => {
@@ -142,5 +178,57 @@ describe("agents-proxy MCP surface", () => {
   it("requires bot_id and message", async () => {
     const res = await callTool("ask_bot", { bot_id: "", message: "" });
     expect(res.result.isError).toBe(true);
+  });
+
+  it("lists filtered tasks with trusted project context and caller identity", async () => {
+    const res = await callTool("list_tasks", { status: "todo", assignee_bot_id: "unassigned", tag: "agents" });
+    const output = res.result.content[0].text;
+    expect(output).toContain("Build board");
+    expect(output).toContain("/workspace/studio");
+    expect(lastTaskRequest?.url).toContain("status=todo");
+    expect(lastTaskRequest?.url).toContain("assigneeBotId=unassigned");
+    expect(lastBotHeader).toBe("bot-asker");
+  });
+
+  it("creates tasks with mapped structured fields", async () => {
+    const res = await callTool("create_task", {
+      title: "Build board",
+      acceptance_criteria: ["Agents can claim it"],
+      project_id: "project-one",
+      priority: "high",
+    });
+    expect(res.result.content[0].text).toContain("Created task");
+    expect(lastTaskRequest).toMatchObject({
+      method: "POST",
+      url: "/api/internal/tasks",
+      body: { title: "Build board", acceptanceCriteria: ["Agents can claim it"], projectId: "project-one" },
+    });
+  });
+
+  it("claims, updates, and delegates with explicit revisions", async () => {
+    await callTool("claim_task", { task_id: "task-one", revision: 3 });
+    expect(lastTaskRequest).toMatchObject({ url: "/api/internal/tasks/task-one/claim", body: { revision: 3 } });
+
+    await callTool("update_task", { task_id: "task-one", revision: 3, status: "review", tags: ["done"] });
+    expect(lastTaskRequest).toMatchObject({
+      method: "PATCH",
+      url: "/api/internal/tasks/task-one",
+      body: { revision: 3, patch: { status: "review", tags: ["done"] } },
+    });
+
+    await callTool("delegate_task", { task_id: "task-one", revision: 3, bot_id: "bot-helper" });
+    expect(lastTaskRequest).toMatchObject({
+      url: "/api/internal/tasks/task-one/delegate",
+      body: { revision: 3, botId: "bot-helper" },
+    });
+  });
+
+  it("returns the latest task when an update conflicts", async () => {
+    taskStatus = 409;
+    const res = await callTool("update_task", { task_id: "task-one", revision: 2, status: "doing" });
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain("stale revision");
+    expect(res.result.content[0].text).toContain("Latest task");
+    expect(res.result.content[0].text).toContain("task-one");
   });
 });

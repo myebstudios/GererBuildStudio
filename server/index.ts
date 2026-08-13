@@ -425,17 +425,15 @@ async function startTurn(
       // integrations.agents gate below, the prompt hint) — a bot on a driver
       // without it must not be told about tools it cannot call. Any bot can
       // still be the TARGET of ask_bot regardless of its driver.
-      if (
-        commsDepth < MAX_COMMS_DEPTH &&
-        instance.adapter.capabilities.agentsMcp === true &&
-        store.bots.filter((b) => b.id !== bot.id && !b.hidden).length > 0
-      ) {
+      const canMessagePeers =
+        commsDepth < MAX_COMMS_DEPTH && store.bots.some((candidate) => candidate.id !== bot.id && !candidate.hidden);
+      if (instance.adapter.capabilities.agentsMcp === true) {
         integrations.agents = agentsIntegration(bot.id, commsDepth);
       }
       // @mentions in the user's message (the composer's tagging UI) become
       // an explicit delegation nudge — the agent still does the ask_bot call
       // itself, so the harness stays the single owner of turns/permissions
-      const tagged = integrations.agents
+      const tagged = integrations.agents && canMessagePeers
         ? mentionedBots(
             text,
             store.bots.filter((b) => b.id !== bot.id),
@@ -458,7 +456,7 @@ async function startTurn(
               ? " You can act on the user's computer through the computer tools — take a screenshot or read the desktop state first, prefer accessibility actions over raw coordinates, and act carefully."
               : "") +
           (integrations.agents
-            ? " You can work with the user's other bots through the agents tools — list_bots shows who's available, ask_bot sends one of them a message and returns their reply."
+            ? ` You can use the shared task board through list_tasks, create_task, claim_task, update_task, and delegate_task. Claim a suitable unassigned task before starting it, keep its status current, and move completed work to review so the user can verify it.${canMessagePeers ? " You can also work with the user's other bots — list_bots shows who's available, and ask_bot sends one of them a message and returns their reply." : ""}`
             : "") +
           (tagged.length
             ? ` The user tagged ${tagged

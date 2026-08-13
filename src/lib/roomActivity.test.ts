@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { foldRoomActivity, type RoomActivityState } from "./roomActivity";
+import { clearRoomActivity, foldRoomActivity, type RoomActivityState } from "./roomActivity";
 
 const frame = (botId: string | undefined, event: Record<string, unknown>) => ({
   botId,
@@ -60,5 +60,18 @@ describe("foldRoomActivity", () => {
     }
     expect(state["room-1"]["bot-1"].entries).toHaveLength(12);
     expect(state["room-1"]["bot-1"].entries[0].title).toBe("tool 19");
+  });
+
+  it("clears only the selected room's activity", () => {
+    const first = foldRoomActivity({}, frame("bot-1", { type: "turn.started", turnId: "one" }));
+    const state = foldRoomActivity(first, {
+      botId: "bot-2",
+      event: { threadId: "room-2", type: "turn.started", turnId: "two" },
+    });
+
+    const cleared = clearRoomActivity(state, "room-1");
+    expect(cleared["room-1"]).toBeUndefined();
+    expect(cleared["room-2"]).toBe(state["room-2"]);
+    expect(clearRoomActivity(cleared, "missing")).toBe(cleared);
   });
 });

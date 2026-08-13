@@ -13,7 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import type { MausColor, MausMotion } from "@/lib/mascot";
-import { foldRoomActivity, type RoomActivityState } from "@/lib/roomActivity";
+import { clearRoomActivity, foldRoomActivity, type RoomActivityState } from "@/lib/roomActivity";
 
 export type { MausColor } from "@/lib/mascot";
 
@@ -143,7 +143,7 @@ export interface InstanceInfo {
   models: { default: string; options: Array<{ id: string; label: string }> };
 }
 
-interface AppState {
+export interface AppState {
   bots: Bot[];
   groups: Group[];
   instances: InstanceInfo[];
@@ -168,7 +168,7 @@ interface AppState {
   } | null;
 }
 
-type Action =
+export type Action =
   | { type: "hydrate"; bots: Bot[]; groups: Group[] }
   | { type: "groupPatched"; group: Partial<Group> & { id: string } }
   | { type: "groupDeleted"; groupId: string }
@@ -176,6 +176,8 @@ type Action =
   | { type: "sendGroup"; groupId: string; text: string }
   | { type: "patchGroup"; groupId: string; patch: Partial<Pick<Group, "name" | "bulletin" | "memberIds">> }
   | { type: "deleteGroup"; groupId: string }
+  | { type: "clearChat"; threadId: string }
+  | { type: "threadCleared"; threadId: string }
   | { type: "toggleReaction"; threadId: string; messageId: string; emoji: string }
   | { type: "interruptGroup"; groupId: string }
   | { type: "instances"; instances: InstanceInfo[] }
@@ -245,7 +247,7 @@ function patchCard(state: AppState, botId: string, messageId: string, patch: Par
   }));
 }
 
-function reducer(state: AppState, action: Action): AppState {
+export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "hydrate": {
       const known = (id: string) => action.bots.some((b) => b.id === id) || action.groups.some((g) => g.id === id);
@@ -265,6 +267,18 @@ function reducer(state: AppState, action: Action): AppState {
       const selectedId = state.selectedId === action.groupId ? (state.bots[0]?.id ?? "") : state.selectedId;
       return { ...state, groups, selectedId };
     }
+    case "threadCleared":
+      return {
+        ...state,
+        bots: state.bots.map((bot) =>
+          bot.threadId === action.threadId
+            ? { ...bot, messages: [], activeLeafId: null, unread: false }
+            : bot,
+        ),
+        groups: state.groups.map((group) =>
+          group.threadId === action.threadId ? { ...group, messages: [], unread: false } : group,
+        ),
+      };
     case "instances":
       return { ...state, instances: action.instances };
     case "configStatus":
@@ -528,6 +542,7 @@ function reducer(state: AppState, action: Action): AppState {
     case "createGroup":
     case "sendGroup":
     case "deleteGroup":
+    case "clearChat":
     case "interruptGroup":
       return state;
   }
@@ -536,7 +551,7 @@ function reducer(state: AppState, action: Action): AppState {
 /** Newest screen frames whose pixels stay in memory per thread. */
 const MAX_KEPT_SCREEN_FRAMES = 8;
 
-const initialState: AppState = {
+export const initialState: AppState = {
   bots: [],
   groups: [],
   instances: [],
@@ -611,6 +626,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const { [threadId]: _r, ...reasoning } = prev.reasoning;
       return { streaming, reasoning };
     });
+  const clearThreadTransientState = (threadId: string) => {
+    deltaBuffer.current.delete(threadId);
+    clearStream(threadId);
+    setRoomActivity((current) => clearRoomActivity(current, threadId));
+  };
   const flushDeltas = () => {
     if (deltaFlush.current !== null) {
       cancelAnimationFrame(deltaFlush.current);
@@ -649,6 +669,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
 
     const wrapped: React.Dispatch<Action> = (action) => {
+      if (action.type === "clearChat") {
+        api(`/api/threads/${action.threadId}/messages`, { method: "DELETE" })
+          .then(() => {
+            rawDispatch({ type: "threadCleared", threadId: action.threadId });
+            clearThreadTransientState(action.threadId);
+          })
+          .catch(showError);
+        return;
+      }
       rawDispatch(action);
       switch (action.type) {
         case "send":
@@ -857,6 +886,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           rawDispatch({ type: "threadActive", threadId: frame.threadId, activeLeafId: frame.activeLeafId });
           // a rewind also invalidates any half-streamed text from the old branch
           clearStream(frame.threadId);
+          break;
+        case "thread.cleared":
+          rawDispatch({ type: "threadCleared", threadId: frame.threadId });
+          clearThreadTransientState(frame.threadId);
           break;
         case "bot": {
           const bot = frame.bot as Partial<Bot> & { id: string };

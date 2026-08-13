@@ -20,6 +20,12 @@ export interface RoomAgentActivity {
 
 export type RoomActivityState = Record<string, Record<string, RoomAgentActivity>>;
 
+export function clearRoomActivity(state: RoomActivityState, threadId: string): RoomActivityState {
+  if (!(threadId in state)) return state;
+  const { [threadId]: _cleared, ...remaining } = state;
+  return remaining;
+}
+
 interface RuntimeEventLike {
   eventId?: string;
   type: string;

@@ -108,4 +108,4 @@ Rollback is a scoped Git revert. Older builds ignore the additive `mention` fiel
 
 ## Approval
 
-Status: awaiting user approval
+Status: approved by user on 2026-08-13

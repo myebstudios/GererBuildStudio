@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { initialState, reducer, type Bot, type Group } from "./store";
+import { initialState, reducer, type Bot, type Group } from "../state/store";
 
 const message = (id: string) => ({
   id,

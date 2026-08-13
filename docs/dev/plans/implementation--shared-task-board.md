@@ -92,4 +92,4 @@ Rollback is a scoped Git revert. Older builds will ignore `tasks.json`; rollback
 
 ## Approval
 
-Status: awaiting user approval
+Status: approved by user on 2026-08-13

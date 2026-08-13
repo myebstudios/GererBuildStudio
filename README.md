@@ -137,6 +137,11 @@ without choosing an ambiguous working directory.
 Rooms also support `@bot` routing, so the two can be combined: `@Scout audit #openmausbot` brings Scout into
 the room with the registered project as context.
 
+Room activity stays visible in a dedicated right-side workstream. It groups live agent turns, tool and
+command titles, elapsed time, approval waits, failures, and recent outcomes by agent; responders waiting
+behind the current speaker show their queue position. On compact windows the same workstream opens as a
+dismissible drawer so it does not squeeze the conversation.
+
 ## How it works
 
 Two processes. The app holds no transports of its own — it sends typed commands over HTTP and folds one SSE

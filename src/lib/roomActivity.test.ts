@@ -42,6 +42,11 @@ describe("foldRoomActivity", () => {
     expect(state["room-1"]["bot-1"].entries[0].status).toBe("failed");
   });
 
+  it("preserves runtime error details", () => {
+    const state = foldRoomActivity({}, frame("bot-1", { type: "runtime.error", eventId: "error-1", message: "command exited 2" }));
+    expect(state["room-1"]["bot-1"].entries[0]).toMatchObject({ status: "failed", title: "command exited 2" });
+  });
+
   it("bounds per-agent history", () => {
     let state: RoomActivityState = {};
     for (let index = 0; index < 20; index += 1) {

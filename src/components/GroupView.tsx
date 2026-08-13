@@ -4,7 +4,7 @@
 // bot messages carry a small maus + name cluster label. Bots reply only
 // when @mentioned (the composer's @ picker knows the members).
 import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, Pin } from "lucide-react";
+import { Activity, ArrowDown, Pin } from "lucide-react";
 import { useStore, useStreaming, formatTime, type Bot, type Group } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { normalizeState } from "@/lib/mascot";
@@ -14,6 +14,7 @@ import { ReactionBar, ReactionChips } from "./Reactions";
 import { cn } from "@/lib/cn";
 import { ProjectMentionText } from "./ProjectMentionText";
 import { ProjectMentionTextarea } from "./ProjectMentionTextarea";
+import { RoomActivityPanel } from "./RoomActivityPanel";
 
 function dayLabel(at: number): string {
   const d = new Date(at);
@@ -130,6 +131,10 @@ export function GroupView({ group }: { group: Group }) {
   const touchY = useRef(0);
   const [bulletinOpen, setBulletinOpen] = useState(false);
   const [bulletinDraft, setBulletinDraft] = useState(group.bulletin);
+  const [activityOpen, setActivityOpen] = useState(() => {
+    const saved = localStorage.getItem("room-activity-open");
+    return saved === null ? window.matchMedia("(min-width: 1180px)").matches : saved === "true";
+  });
 
   const members = useMemo(
     () => group.memberIds.map((id) => state.bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b)),
@@ -139,6 +144,7 @@ export function GroupView({ group }: { group: Group }) {
 
   useEffect(() => setFollow(true), [group.id]);
   useEffect(() => setBulletinDraft(group.bulletin), [group.id, group.bulletin]);
+  useEffect(() => localStorage.setItem("room-activity-open", String(activityOpen)), [activityOpen]);
   useEffect(() => {
     if (follow) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [group.id, group.messages.length, streaming, group.busyBotId, follow]);
@@ -159,23 +165,46 @@ export function GroupView({ group }: { group: Group }) {
   const drag = isWin ? ({ WebkitAppRegion: "drag" } as React.CSSProperties) : undefined;
   const noDrag = isWin ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined;
 
+  const activityCount = Number(Boolean(group.busyBotId)) + (group.queuedBotIds?.length ?? 0);
+
   return (
-    <main className="relative flex h-full min-w-0 flex-1 flex-col bg-app">
+    <main className="relative flex h-full min-w-0 flex-1 bg-app">
+      <section className="relative flex h-full min-w-0 flex-1 flex-col">
       {/* Header: name left, member mauses right — their motion IS the status */}
       <div className={cn("flex items-center justify-between px-5 py-3", isWin && "pr-[148px]")} style={drag}>
         <span className="text-[15px] font-semibold text-ink">{group.name}</span>
-        <div className="flex items-center gap-1.5" style={noDrag}>
-          {members.map((b) => (
-            <span key={b.id} title={`${b.name}${group.busyBotId === b.id ? " — working…" : ""}`}>
-              <MausAvatar
-                color={b.color}
-                state={normalizeState(b.mascotExpression) ?? "happy"}
-                size={24}
-                motion={group.busyBotId === b.id ? "working" : "none"}
-                motionKey={group.busyBotId === b.id ? 1 : 0}
-              />
-            </span>
-          ))}
+        <div className="flex items-center gap-2.5" style={noDrag}>
+          <div className="flex items-center gap-1.5">
+            {members.map((b) => (
+              <span key={b.id} title={`${b.name}${group.busyBotId === b.id ? " — working…" : ""}`}>
+                <MausAvatar
+                  color={b.color}
+                  state={normalizeState(b.mascotExpression) ?? "happy"}
+                  size={24}
+                  motion={group.busyBotId === b.id ? "working" : "none"}
+                  motionKey={group.busyBotId === b.id ? 1 : 0}
+                />
+              </span>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setActivityOpen((open) => !open)}
+            aria-label={activityOpen ? "Hide room activity" : "Show room activity"}
+            aria-pressed={activityOpen}
+            className={cn(
+              "relative flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px]",
+              activityOpen ? "bg-raised text-ink" : "text-ink-secondary hover:bg-raised/60 hover:text-ink",
+            )}
+          >
+            <Activity size={14} />
+            <span className="hidden sm:inline">Activity</span>
+            {activityCount > 0 && (
+              <span className="flex min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-white">
+                {activityCount}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -295,6 +324,33 @@ export function GroupView({ group }: { group: Group }) {
       )}
 
       <Composer key={group.id} group={group} members={members} />
+      </section>
+
+      {activityOpen && (
+        <RoomActivityPanel
+          group={group}
+          members={members}
+          onClose={() => setActivityOpen(false)}
+          className="hidden min-[1180px]:flex"
+        />
+      )}
+
+      {activityOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close activity panel"
+            onClick={() => setActivityOpen(false)}
+            className="absolute inset-0 z-20 bg-black/55 min-[1180px]:hidden"
+          />
+          <RoomActivityPanel
+            group={group}
+            members={members}
+            onClose={() => setActivityOpen(false)}
+            className="absolute inset-y-0 right-0 z-30 flex max-w-[88vw] shadow-2xl min-[1180px]:hidden"
+          />
+        </>
+      )}
     </main>
   );
 }

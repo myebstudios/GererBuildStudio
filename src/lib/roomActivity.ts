@@ -32,6 +32,7 @@ interface RuntimeEventLike {
   title?: string;
   tool?: string;
   summary?: string;
+  message?: string;
   ok?: boolean;
 }
 
@@ -143,7 +144,7 @@ export function foldRoomActivity(
         entries: upsertEntry(current.entries, {
           id: `error-${event.eventId ?? event.turnId ?? at}`,
           kind: "error",
-          title: event.summary || event.title || "Agent process failed",
+          title: event.message || event.summary || event.title || "Agent process failed",
           status: "failed",
           startedAt: at,
           updatedAt: at,

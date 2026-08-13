@@ -1,6 +1,9 @@
 node_modules
 dist
 dist-electron
+# Local environment files and credentials
+.env*
+!.env.example
 *.local
 .DS_Store
 *.tsbuildinfo

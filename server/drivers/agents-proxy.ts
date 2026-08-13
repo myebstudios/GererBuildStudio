@@ -44,7 +44,7 @@ const TOOLS = [
   {
     name: "list_tasks",
     description:
-      "List work on the shared task board. Use filters to find unassigned work you can claim or tasks assigned to a specific agent. Project tasks include their trusted local path when available.",
+      "List work on the shared task board. Use filters to find unassigned work you can claim or tasks assigned to a specific agent. Project tasks include their trusted local path when available. Always use the task tools for changes; never edit tasks.json directly.",
     inputSchema: {
       type: "object",
       properties: {

@@ -61,6 +61,41 @@ describe("TaskStore", () => {
     expect(readFileSync(file, "utf8")).toContain("broken");
   });
 
+  it("reloads tasks when another process replaces the persistence file", () => {
+    const { root, store } = fixture();
+    const original = store.create({ title: "Original" }, user);
+    const imported = { ...original, id: "external-task", title: "Imported from Trello" };
+
+    writeFileSync(join(root, "tasks.json"), JSON.stringify([original, imported], null, 2));
+
+    expect(store.list().map((task) => task.title)).toEqual(["Original", "Imported from Trello"]);
+  });
+
+  it("preserves externally imported tasks when creating more work", () => {
+    const { root, store } = fixture();
+    const original = store.create({ title: "Original" }, user);
+    const imported = { ...original, id: "external-task", title: "Imported from Trello" };
+    const file = join(root, "tasks.json");
+    writeFileSync(file, JSON.stringify([imported], null, 2));
+
+    store.create({ title: "Created after import" }, user);
+
+    expect(JSON.parse(readFileSync(file, "utf8")).map((task: { title: string }) => task.title).sort()).toEqual([
+      "Created after import",
+      "Imported from Trello",
+    ]);
+  });
+
+  it("rejects a malformed external replacement without overwriting it", () => {
+    const { root, store } = fixture();
+    store.create({ title: "Original" }, user);
+    const file = join(root, "tasks.json");
+    writeFileSync(file, JSON.stringify([{ id: "broken-import" }]));
+
+    expect(() => store.list()).toThrow(TaskValidationError);
+    expect(readFileSync(file, "utf8")).toContain("broken-import");
+  });
+
   it("validates bounded input", () => {
     const { store } = fixture();
     expect(() => store.create({ title: " " }, user)).toThrow("Title is required");

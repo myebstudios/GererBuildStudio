@@ -333,6 +333,18 @@ export function TaskBoardScreen() {
   const tags = useMemo(() => [...new Set(state.tasks.flatMap((task) => task.tags))].sort(), [state.tasks]);
   const selectClass = "min-w-28 rounded-lg border border-hairline/50 bg-panel px-2.5 py-2 text-[11px] text-ink focus:border-accent/70 focus:outline-none";
 
+  useEffect(() => {
+    let alive = true;
+    api("/api/tasks")
+      .then(({ tasks, projects }) => {
+        if (alive) dispatch({ type: "hydrateTasks", tasks, projects });
+      })
+      .catch((reason) => {
+        if (alive) setError(errorMessage(reason));
+      });
+    return () => { alive = false; };
+  }, [dispatch]);
+
   const reconcileError = (reason: unknown) => {
     if (reason instanceof ApiError && reason.body.latest) dispatch({ type: "taskUpserted", task: reason.body.latest });
     setError(errorMessage(reason));

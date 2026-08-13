@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { newId } from "./contracts.ts";
@@ -224,19 +224,45 @@ export function filterTasks(tasks: TaskRecord[], filters: TaskFilters, now = Dat
 export class TaskStore {
   readonly filePath: string;
   tasks: TaskRecord[];
+  private fileStamp: string | null = null;
 
   constructor(dataDir: string) {
     if (!dataDir) throw new TaskValidationError("Task data directory is required.");
     mkdirSync(dataDir, { recursive: true });
     this.filePath = join(dataDir, TASKS_FILE);
+    this.tasks = [];
+    this.reloadIfChanged(true);
+  }
+
+  private diskStamp(): string | null {
     try {
-      const parsed: unknown = JSON.parse(readFileSync(this.filePath, "utf8"));
-      if (!Array.isArray(parsed)) throw new TaskValidationError("Saved task data is invalid. The file was left unchanged.");
-      this.tasks = parsed.map(validateSavedTask).sort(compareTasks);
+      const stat = statSync(this.filePath);
+      return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") this.tasks = [];
-      else throw error;
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+      throw error;
     }
+  }
+
+  private reloadIfChanged(force = false): boolean {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const before = this.diskStamp();
+      if (!force && before === this.fileStamp) return false;
+      if (before === null) {
+        this.tasks = [];
+        this.fileStamp = null;
+        return true;
+      }
+      const parsed: unknown = JSON.parse(readFileSync(this.filePath, "utf8"));
+      const after = this.diskStamp();
+      if (before !== after) continue;
+      if (!Array.isArray(parsed)) throw new TaskValidationError("Saved task data is invalid. The file was left unchanged.");
+      const tasks = parsed.map(validateSavedTask).sort(compareTasks);
+      this.tasks = tasks;
+      this.fileStamp = after;
+      return true;
+    }
+    throw new TaskValidationError("Task data changed while it was being loaded. Try again.");
   }
 
   private save(): void {
@@ -244,6 +270,7 @@ export class TaskStore {
     try {
       writeFileSync(temporary, JSON.stringify(this.tasks, null, 2), { mode: 0o600 });
       renameSync(temporary, this.filePath);
+      this.fileStamp = this.diskStamp();
     } catch (error) {
       try { unlinkSync(temporary); } catch {}
       throw error;
@@ -251,10 +278,12 @@ export class TaskStore {
   }
 
   list(filters: TaskFilters = {}): TaskRecord[] {
+    this.reloadIfChanged();
     return filterTasks(this.tasks, filters);
   }
 
   get(id: string): TaskRecord | undefined {
+    this.reloadIfChanged();
     return this.tasks.find((task) => task.id === id);
   }
 
@@ -263,6 +292,7 @@ export class TaskStore {
   }
 
   create(input: CreateTaskInput, actor: TaskActor): TaskRecord {
+    this.reloadIfChanged();
     const status = input.status ?? "todo";
     const type = input.type ?? "feature";
     const priority = input.priority ?? "normal";

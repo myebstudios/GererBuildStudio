@@ -4,7 +4,7 @@
 // suite is deterministic with or without agent CLIs installed — and pins
 // the shadow-instance behavior end to end while it's at it.
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -163,6 +163,21 @@ describe("harness HTTP API", () => {
     expect(deleted).toEqual({ status: 200, body: { ok: true } });
     expect((await api("GET", "/api/tasks")).body.tasks.find((task: { id: string }) => task.id === created.body.task.id)).toBeUndefined();
     streamAbort.abort();
+  });
+
+  it("reconciles an externally replaced task file on the next board request", async () => {
+    const created = await api("POST", "/api/tasks", { title: "Created through the API" });
+    const file = join(home, ".openmausbot", "tasks.json");
+    const records = JSON.parse(readFileSync(file, "utf8"));
+    const imported = { ...records.find((task: { id: string }) => task.id === created.body.task.id), id: "external-import", title: "Imported externally" };
+    writeFileSync(file, JSON.stringify([...records, imported], null, 2));
+
+    const listed = await api("GET", "/api/tasks");
+
+    expect(listed.status).toBe(200);
+    expect(listed.body.tasks).toContainEqual(expect.objectContaining({ id: "external-import", title: "Imported externally" }));
+    await api("DELETE", `/api/tasks/${created.body.task.id}`, { revision: created.body.task.revision });
+    await api("DELETE", "/api/tasks/external-import", { revision: imported.revision });
   });
 
   it("keeps agent task routes behind the internal bearer token", async () => {

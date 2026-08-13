@@ -11,6 +11,7 @@ import { PluginsPanel } from "@/components/PluginsPanel";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { AppSettingsPanel } from "@/components/AppSettingsPanel";
 import { UpdateBanner } from "@/components/UpdateBanner";
+import { ProjectsScreen } from "@/components/ProjectsScreen";
 
 function Shell() {
   const { state, dispatch } = useStore();
@@ -52,7 +53,9 @@ function Shell() {
       <UpdateBanner />
       <div className="relative flex min-h-0 flex-1">
       <Sidebar />
-      {group ? (
+      {state.projectsOpen ? (
+        <ProjectsScreen />
+      ) : group ? (
         <GroupView key={group.id} group={group} />
       ) : bot ? (
         <ChatView bot={bot} />

@@ -151,6 +151,7 @@ interface AppState {
   pluginsOpen: boolean;
   computerOpen: boolean;
   appSettingsOpen: boolean;
+  projectsOpen: boolean;
   /** latest live frame of a bot's computer, per botId */
   screens: Record<string, { png: string; mime: string }>;
   /** bots whose cloud computer is being provisioned */
@@ -201,6 +202,7 @@ type Action =
   | { type: "togglePlugins"; open?: boolean }
   | { type: "toggleComputer"; open?: boolean }
   | { type: "toggleAppSettings"; open?: boolean }
+  | { type: "toggleProjects"; open?: boolean }
   | {
       type: "updateBot";
       botId: string;
@@ -269,11 +271,12 @@ function reducer(state: AppState, action: Action): AppState {
         return {
           ...state,
           selectedId: action.id,
+          projectsOpen: false,
           groups: state.groups.map((g) => (g.id === action.id ? { ...g, unread: false } : g)),
         };
       }
       return updateBot(
-        withMascotMotion({ ...state, selectedId: action.id }, action.id, "switch"),
+        withMascotMotion({ ...state, selectedId: action.id, projectsOpen: false }, action.id, "switch"),
         action.id,
         (b) => ({ ...b, unread: false }),
       );
@@ -420,10 +423,13 @@ function reducer(state: AppState, action: Action): AppState {
         settingsOpen: open,
         computerOpen: open ? false : state.computerOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
+        projectsOpen: open ? false : state.projectsOpen,
       };
     }
-    case "togglePlugins":
-      return { ...state, pluginsOpen: action.open ?? !state.pluginsOpen };
+    case "togglePlugins": {
+      const open = action.open ?? !state.pluginsOpen;
+      return { ...state, pluginsOpen: open, projectsOpen: open ? false : state.projectsOpen };
+    }
     case "toggleComputer": {
       const open = action.open ?? !state.computerOpen;
       return {
@@ -431,6 +437,7 @@ function reducer(state: AppState, action: Action): AppState {
         computerOpen: open,
         settingsOpen: open ? false : state.settingsOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
+        projectsOpen: open ? false : state.projectsOpen,
       };
     }
     case "toggleAppSettings": {
@@ -440,6 +447,18 @@ function reducer(state: AppState, action: Action): AppState {
         appSettingsOpen: open,
         settingsOpen: open ? false : state.settingsOpen,
         computerOpen: open ? false : state.computerOpen,
+        pluginsOpen: open ? false : state.pluginsOpen,
+        projectsOpen: open ? false : state.projectsOpen,
+      };
+    }
+    case "toggleProjects": {
+      const open = action.open ?? !state.projectsOpen;
+      return {
+        ...state,
+        projectsOpen: open,
+        settingsOpen: open ? false : state.settingsOpen,
+        computerOpen: open ? false : state.computerOpen,
+        appSettingsOpen: open ? false : state.appSettingsOpen,
         pluginsOpen: open ? false : state.pluginsOpen,
       };
     }
@@ -524,6 +543,7 @@ const initialState: AppState = {
   pluginsOpen: false,
   computerOpen: false,
   appSettingsOpen: false,
+  projectsOpen: false,
   screens: {},
   provisioning: {},
   connected: false,

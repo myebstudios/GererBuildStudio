@@ -18,6 +18,7 @@ import {
   Search,
   Settings,
   Puzzle,
+  FolderKanban,
   Trash2,
   Users,
 } from "lucide-react";
@@ -571,6 +572,16 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="px-3 pb-3 pt-2">
+        <button
+          onClick={() => dispatch({ type: "toggleProjects", open: true })}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left",
+            state.projectsOpen ? "bg-raised" : "hover:bg-raised/50",
+          )}
+        >
+          <FolderKanban size={20} className={state.projectsOpen ? "text-accent" : "text-ink-secondary"} />
+          <span className="text-[14px] text-ink">Projects</span>
+        </button>
         <button
           onClick={() => dispatch({ type: "togglePlugins", open: true })}
           className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-raised/50"

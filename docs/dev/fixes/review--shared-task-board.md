@@ -1,5 +1,5 @@
 ---
-status: doing
+status: review
 created: 2026-08-13
 updated: 2026-08-13
 scope: shared task board
@@ -17,19 +17,19 @@ Review feedback on 2026-08-13: an agent bulk-imported valid tasks by replacing `
 
 ## 1. Task domain and persistence
 
-- [~] **Define and persist structured task records** — `server/tasks.ts:1`, `server/store.ts:1`. Store status, project, assignee, type, priority, tags, descriptive content, actor metadata, timestamps, and a revision while validating malformed or stale writes. Reconcile valid external file replacements before reads or mutations.
+- [?] **Define and persist structured task records** — `server/tasks.ts:1`, `server/store.ts:1`. Store status, project, assignee, type, priority, tags, descriptive content, actor metadata, timestamps, and a revision while validating malformed or stale writes. Reconcile valid external file replacements before reads or mutations.
 - [?] **Expose task commands and live task events through the harness** — `server/index.ts:1`. Support list, create, update, claim, delegate, and delete operations with conflict-safe state transitions and SSE updates.
 
 ## 2. User task board
 
-- [~] **Add a first-class Task Board destination** — `src/App.tsx:1`, `src/components/Sidebar.tsx:1`, `src/state/store.tsx:1`. Integrate board navigation and live task state without adding a second client transport. Refresh the canonical board snapshot whenever the destination opens.
+- [?] **Add a first-class Task Board destination** — `src/App.tsx:1`, `src/components/Sidebar.tsx:1`, `src/state/store.tsx:1`. Integrate board navigation and live task state without adding a second client transport. Refresh the canonical board snapshot whenever the destination opens.
 - [?] **Build an accessible, filterable Kanban interface** — `src/components/TaskBoardScreen.tsx:1`. Let users create, edit, move, assign, filter, and remove tasks using the existing visual system and keyboard-accessible controls.
 
 ## 3. Agent task tools
 
-- [~] **Let agents discover, claim, create, update, and delegate tasks** — `server/drivers/agents-proxy.ts:1`, `server/index.ts:1`. Add authenticated MCP tools that attribute changes to the calling bot and return actionable conflict details. Explicitly prohibit direct `tasks.json` edits.
+- [?] **Let agents discover, claim, create, update, and delegate tasks** — `server/drivers/agents-proxy.ts:1`, `server/index.ts:1`. Add authenticated MCP tools that attribute changes to the calling bot and return actionable conflict details. Explicitly prohibit direct `tasks.json` edits.
 
 ## 4. Verification and documentation
 
-- [~] **Cover persistence, API, agent-tool, and reducer behavior** — `server/tasks.test.ts:1`, `server/index.test.ts:1`, `server/drivers/agents-proxy.test.ts:1`, `src/lib/taskBoard.test.ts:1`. Use isolated test data and observable events rather than real user storage or sleeps. Cover external replacement followed by reads and mutations.
+- [?] **Cover persistence, API, agent-tool, and reducer behavior** — `server/tasks.test.ts:1`, `server/index.test.ts:1`, `server/drivers/agents-proxy.test.ts:1`, `src/lib/taskBoard.test.ts:1`. Use isolated test data and observable events rather than real user storage or sleeps. Cover external replacement followed by reads and mutations.
 - [?] **Document the shared task workflow and its boundaries** — `README.md:1`. Explain user controls, agent commands, filtering, claiming semantics, and the lack of autonomous scheduling in the first version.

@@ -1214,7 +1214,14 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req);
       const instance = registry.get(bot.modelSelection.instanceId);
       if (!instance) return json(res, 409, { error: "provider unavailable" });
-      await instance.adapter.respondToRequest(bot.threadId, String(body.requestId), {
+      const requestedThreadId = typeof body.threadId === "string" && body.threadId ? body.threadId : bot.threadId;
+      if (requestedThreadId !== bot.threadId) {
+        const group = store.groupByThread(requestedThreadId);
+        if (!group || !group.memberIds.includes(bot.id) || groupSpeakers.get(requestedThreadId)?.botId !== bot.id) {
+          return json(res, 403, { error: "agent is not awaiting input in that room" });
+        }
+      }
+      await instance.adapter.respondToRequest(requestedThreadId, String(body.requestId), {
         behavior: body.behavior,
         message: body.message,
       });

@@ -192,8 +192,8 @@ export type Action =
   | { type: "editMessage"; botId: string; messageId: string; text: string }
   | { type: "switchBranch"; botId: string; messageId: string }
   | { type: "threadActive"; threadId: string; activeLeafId: string }
-  | { type: "answerCard"; botId: string; messageId: string; answer: string }
-  | { type: "dismissCard"; botId: string; messageId: string }
+  | { type: "answerCard"; botId: string; threadId?: string; messageId: string; answer: string }
+  | { type: "dismissCard"; botId: string; threadId?: string; messageId: string }
   | { type: "newBot" }
   | { type: "botAdded"; bot: Bot }
   | { type: "deleteBot"; botId: string }
@@ -247,11 +247,22 @@ function withMascotMotion(
   };
 }
 
-function patchCard(state: AppState, botId: string, messageId: string, patch: Partial<OptionCardData>): AppState {
-  return updateBot(state, botId, (b) => ({
-    ...b,
-    messages: b.messages.map((m) =>
-      m.id === messageId && m.card ? { ...m, card: { ...m.card, ...patch } } : m,
+function patchCard(state: AppState, botId: string, threadId: string | undefined, messageId: string, patch: Partial<OptionCardData>): AppState {
+  if (threadId) {
+    return {
+      ...state,
+      groups: state.groups.map((group) => group.threadId === threadId ? {
+        ...group,
+        messages: group.messages.map((message) =>
+          message.id === messageId && message.card ? { ...message, card: { ...message.card, ...patch } } : message,
+        ),
+      } : group),
+    };
+  }
+  return updateBot(state, botId, (bot) => ({
+    ...bot,
+    messages: bot.messages.map((message) =>
+      message.id === messageId && message.card ? { ...message, card: { ...message.card, ...patch } } : message,
     ),
   }));
 }
@@ -324,12 +335,12 @@ export function reducer(state: AppState, action: Action): AppState {
     // optimistic card settle; the server's message.patch confirms it later
     case "answerCard":
       return withMascotMotion(
-        patchCard(state, action.botId, action.messageId, { answered: action.answer }),
+        patchCard(state, action.botId, action.threadId, action.messageId, { answered: action.answer }),
         action.botId,
         "working",
       );
     case "dismissCard":
-      return patchCard(state, action.botId, action.messageId, { dismissed: true });
+      return patchCard(state, action.botId, action.threadId, action.messageId, { dismissed: true });
     case "botAdded":
       return withMascotMotion({
         ...state,
@@ -756,8 +767,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }).catch(showError);
           break;
         case "answerCard": {
-          const bot = stateRef.current.bots.find((b) => b.id === action.botId);
-          const card = bot?.messages.find((m) => m.id === action.messageId)?.card;
+          const owner = action.threadId
+            ? stateRef.current.groups.find((group) => group.threadId === action.threadId)
+            : stateRef.current.bots.find((bot) => bot.id === action.botId);
+          const card = owner?.messages.find((message) => message.id === action.messageId)?.card;
           if (card?.requestId) {
             const behavior =
               action.answer === "Allow" ? "allow" : action.answer === "Deny" ? "deny" : "answer";
@@ -767,6 +780,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 requestId: card.requestId,
                 behavior,
                 message: behavior === "answer" ? action.answer : undefined,
+                threadId: action.threadId,
               }),
             }).catch(showError);
           } else {
@@ -779,12 +793,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         }
         case "dismissCard": {
-          const bot = stateRef.current.bots.find((b) => b.id === action.botId);
-          const card = bot?.messages.find((m) => m.id === action.messageId)?.card;
+          const owner = action.threadId
+            ? stateRef.current.groups.find((group) => group.threadId === action.threadId)
+            : stateRef.current.bots.find((bot) => bot.id === action.botId);
+          const card = owner?.messages.find((message) => message.id === action.messageId)?.card;
           if (card?.requestId) {
             api(`/api/bots/${action.botId}/respond`, {
               method: "POST",
-              body: JSON.stringify({ requestId: card.requestId, behavior: "deny", message: "Dismissed by user." }),
+              body: JSON.stringify({ requestId: card.requestId, behavior: "deny", message: "Dismissed by user.", threadId: action.threadId }),
             }).catch(() => {});
           } else {
             persistCard(action.botId, action.messageId, { dismissed: true });

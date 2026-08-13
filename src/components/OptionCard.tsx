@@ -7,9 +7,11 @@ const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
 export function OptionCard({
   botId,
+  threadId,
   message,
 }: {
   botId: string;
+  threadId?: string;
   message: Message;
 }) {
   const { dispatch } = useStore();
@@ -19,7 +21,7 @@ export function OptionCard({
 
   const answer = (text: string) => {
     if (!text.trim()) return;
-    dispatch({ type: "answerCard", botId, messageId: message.id, answer: text.trim() });
+    dispatch({ type: "answerCard", botId, threadId, messageId: message.id, answer: text.trim() });
   };
 
   return (
@@ -32,8 +34,10 @@ export function OptionCard({
           </div>
         </div>
         <button
+          type="button"
+          aria-label="Dismiss prompt"
           onClick={() =>
-            dispatch({ type: "dismissCard", botId, messageId: message.id })
+            dispatch({ type: "dismissCard", botId, threadId, messageId: message.id })
           }
           className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
         >
@@ -44,6 +48,7 @@ export function OptionCard({
       <div className="mt-3 overflow-hidden rounded-lg border border-hairline/40">
         {card.options.map((opt, i) => (
           <button
+            type="button"
             key={opt}
             disabled={!!card.answered}
             onClick={() => answer(opt)}

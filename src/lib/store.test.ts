@@ -61,6 +61,37 @@ describe("threadCleared state", () => {
   });
 });
 
+describe("room approval cards", () => {
+  it("settles the card in the room transcript", () => {
+    const room = group("room", "room-thread");
+    room.messages = [{
+      id: "approval-message",
+      role: "bot",
+      kind: "options",
+      at: 1,
+      from: { botId: "agent", name: "Agent", color: "purple" },
+      card: {
+        title: "Approval needed",
+        subtitle: "Run the preview server?",
+        options: ["Allow", "Deny"],
+        requestId: "request-one",
+      },
+    }];
+    const state = { ...initialState, bots: [bot("agent", "agent-thread")], groups: [room] };
+
+    const next = reducer(state, {
+      type: "answerCard",
+      botId: "agent",
+      threadId: room.threadId,
+      messageId: "approval-message",
+      answer: "Allow",
+    });
+
+    expect(next.groups[0].messages[0].card?.answered).toBe("Allow");
+    expect(next.bots[0]).toBe(state.bots[0]);
+  });
+});
+
 describe("shared task board state", () => {
   const task = (revision: number): TaskRecord => ({
     id: "task-one",

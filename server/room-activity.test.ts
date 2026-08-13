@@ -149,6 +149,24 @@ posixOnly("room activity runtime", () => {
     );
     expect(approval.botId).toBe(alpha.id);
 
+    const prompt = await waitForFrame(
+      (frame) => frame.kind === "message" && frame.threadId === group.threadId && frame.message.kind === "options",
+      "room approval card",
+    );
+    expect(prompt.message.from.botId).toBe(alpha.id);
+    expect(prompt.message.card.options).toEqual(["Allow", "Deny"]);
+
+    const response = await api("POST", `/api/bots/${alpha.id}/respond`, {
+      requestId: approval.event.requestId,
+      behavior: "allow",
+      threadId: group.threadId,
+    });
+    expect(response.status).toBe(200);
+    await waitForFrame(
+      (frame) => frame.kind === "runtime" && frame.event.type === "request.resolved" && frame.event.requestId === approval.event.requestId,
+      "resolved room approval",
+    );
+
     await api("POST", `/api/groups/${group.id}/interrupt`);
     const cleared = await waitForFrame(
       (frame) => frame.kind === "group" && frame.group.id === group.id && frame.group.queuedBotIds?.length === 0,

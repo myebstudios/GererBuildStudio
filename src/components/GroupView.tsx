@@ -15,6 +15,7 @@ import { cn } from "@/lib/cn";
 import { ProjectMentionText } from "./ProjectMentionText";
 import { ProjectMentionTextarea } from "./ProjectMentionTextarea";
 import { RoomActivityPanel } from "./RoomActivityPanel";
+import { OptionCard } from "./OptionCard";
 
 function dayLabel(at: number): string {
   const d = new Date(at);
@@ -90,6 +91,8 @@ const Transcript = memo(function Transcript({
               </div>
               <ReactionChips threadId={group.threadId} message={m} members={members} align={user ? "right" : "left"} />
             </div>
+          ) : m.kind === "options" && m.card && m.from ? (
+            <OptionCard botId={m.from.botId} threadId={group.threadId} message={m} />
           ) : null;
         if (!row) return null;
         return (

@@ -17,6 +17,7 @@ import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
 import { mentionedBots, Store, type Message } from "./store.ts";
+import { resolveProjectContext } from "./projects.ts";
 
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
 const STATIC_DIR = process.env.OMB_STATIC_DIR || null;
@@ -369,6 +370,7 @@ async function startTurn(
   ]
     .filter(Boolean)
     .join(" ");
+  const projectContext = resolveProjectContext([text, bot.description]);
 
   // busy flips immediately so the composer locks; the dispatch itself runs
   // in the background — box provisioning can take ~90s and must never
@@ -431,6 +433,7 @@ async function startTurn(
         transcript,
         system:
           persona +
+          (projectContext.system ? `\n\n${projectContext.system}` : "") +
           (integrations.computer && instance.driverKind !== "boxAgent"
             ? " You have your own cloud computer — use the computer tools (screenshot, computer_exec, open_url) whenever browsing or acting on a desktop helps."
             : integrations.localComputer
@@ -444,6 +447,7 @@ async function startTurn(
                 .map((t) => `@${t.name} (ask_bot bot_id ${t.id})`)
                 .join(" and ")} in their message — bring them in with ask_bot and fold their reply into your answer.`
             : ""),
+        cwd: projectContext.cwd,
         integrations,
       });
       // dispatched: the rewind is spent, and the old cursors are dead
@@ -522,12 +526,17 @@ async function runGroupMemberTurn(
     .filter((b): b is NonNullable<typeof b> => Boolean(b))
     .map((b) => `@${b.name}${b.title ? ` (${b.title})` : ""}`)
     .join(", ");
+  const latestUserText = [...store.messagesFor(group.threadId)]
+    .reverse()
+    .find((message) => message.role === "user" && message.kind === "text")?.text ?? "";
+  const projectContext = resolveProjectContext([latestUserText, group.bulletin, bot.description]);
   const system = [
     `You are ${bot.name}, a bot in the room "${group.name}" in OpenMausBot.`,
     bot.title && `Role: ${bot.title}.`,
     bot.description && `About: ${bot.description}`,
     `Room members: ${roster}, and ${userName} (the human).`,
     group.bulletin.trim() && `Room bulletin (shared instructions for everyone):\n${group.bulletin.trim()}`,
+    projectContext.system,
     `Reply as yourself, briefly and conversationally. To bring a teammate in, mention them like @Name — they'll see the conversation and respond.`,
   ]
     .filter(Boolean)
@@ -554,7 +563,7 @@ async function runGroupMemberTurn(
     });
     const timer = setTimeout(finish, 5 * 60_000);
     instance.adapter
-      .sendTurn({ threadId: group.threadId, text, system })
+      .sendTurn({ threadId: group.threadId, text, system, cwd: projectContext.cwd })
       .catch((err) => {
         const failure = store.appendMessage(group.threadId, {
           role: "bot",

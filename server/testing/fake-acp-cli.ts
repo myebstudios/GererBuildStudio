@@ -36,6 +36,7 @@ let onPermissionAnswered: (() => void) | null = null;
 // ask-peer mode: the "agents" MCP server entry from session/new's mcpServers
 type McpEntry = { command: string; args?: string[]; env?: Array<{ name: string; value: string }> };
 let agentsMcp: McpEntry | null = null;
+let sessionCwd = "";
 
 /** Minimal one-shot MCP stdio client: initialize, call each tool in
  * sequence, return the text of the last result. Dependency-free. */
@@ -134,6 +135,7 @@ function handle(msg: any) {
       result(msg.id, {});
       break;
     case "session/new": {
+      sessionCwd = String(msg.params?.cwd ?? "");
       const servers: McpEntry[] = Array.isArray(msg.params?.mcpServers) ? msg.params.mcpServers : [];
       agentsMcp = servers.find((s: any) => s?.name === "agents") ?? null;
       result(msg.id, { sessionId: "fake-acp-session" });
@@ -150,6 +152,23 @@ function handle(msg: any) {
       }
       const complete = () =>
         result(msg.id, { stopReason: "end_turn", _meta: { inputTokens: 10, outputTokens: 5 } });
+      if (mode === "echo-context") {
+        const prompt = Array.isArray(msg.params?.prompt)
+          ? msg.params.prompt.map((part: any) => part?.text ?? "").join("")
+          : String(msg.params?.prompt ?? "");
+        out({
+          jsonrpc: "2.0",
+          method: "session/update",
+          params: {
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { text: JSON.stringify({ cwd: sessionCwd, prompt }) },
+            },
+          },
+        });
+        complete();
+        return;
+      }
       if (mode === "ask-peer" && agentsMcp) {
         // the comms e2e: reach a peer bot through the injected agents proxy
         // and reply with whatever it said (the peer's fake runs plain happy

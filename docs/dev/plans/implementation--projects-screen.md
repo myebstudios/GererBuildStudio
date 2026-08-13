@@ -89,4 +89,4 @@ Rollback is a single scoped Git revert. The persisted `projects.json` contains o
 
 ## Approval
 
-Status: awaiting user approval
+Status: approved by user on 2026-08-13

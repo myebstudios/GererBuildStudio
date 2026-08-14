@@ -127,6 +127,8 @@ describe("shared task board state", () => {
     activity: [],
     project: null,
     assignee: null,
+    trelloCardId: null,
+    trelloCardUrl: null,
   });
 
   it("hydrates, folds live updates, and removes deleted tasks", () => {

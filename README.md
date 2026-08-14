@@ -140,8 +140,35 @@ two agents cannot silently claim or overwrite the same task; a conflict returns 
 losing agent and refreshes the UI. Completed agent work should move to **Review** for user verification.
 
 Task assignment records intent—it does not launch a bot in the background. A user-initiated turn is still
-required for an agent to act. Runtime tasks are stored locally in `~/.gerer-build-studio/tasks.json`; they are
+required for an agent to act. Runtime tasks are stored locally in `~/.gbs/tasks.json`; they are
 separate from the repository-maintenance workflow in `docs/dev/fixes/`.
+
+Agents have full parity with the UI: `list_tasks`, `create_task`, `claim_task`, `update_task`,
+`delegate_task`, and `delete_task` cover everything a user can do from the board, all revision-checked and
+attributed to the calling bot.
+
+### Link a project to Trello
+
+Connect your own Trello account from **Settings → Connections → Trello**: paste an API key from
+[trello.com/power-ups/admin](https://trello.com/power-ups/admin) and click **Connect Trello**, which opens
+Trello's own authorize page in your browser. Approving it hands a personal token back to the app — the key
+just identifies the app, the token is your account's own grant, and both stay local in
+`~/.gbs/config.json`, write-only like every other credential here.
+
+Once connected, open **Trello** from the Task Board header to link any registered project to a board — pick
+one of your existing boards or create a new one. Linking creates (or reuses) four lists — Todo, Doing,
+Review, Done — and from then on tasks for that project mirror both ways:
+
+- **Push** — creating, editing, moving, or deleting a linked task creates/updates/archives its Trello card
+  immediately.
+- **Pull** — a background poll (every 45s, or **Sync now** in the Trello modal) reconciles the board: new
+  cards in a tracked list become new tasks, and edits on Trello apply locally when the card is actually
+  newer *and* different, so a pull right after a push is always a no-op — no echo loop. Trello-sourced
+  changes are attributed to "Trello sync" in the task's activity trail, never to "You".
+
+Deletions don't cascade in either direction: archiving a card on Trello does not remove the local task, and
+a card matched to a task that's gone is simply left alone. Each project maps to exactly one board; agents
+see the linked Trello URL wherever they see the task.
 
 ### Refer to projects and bots
 
@@ -195,6 +222,7 @@ flowchart LR
 | Desktop | `electron/` | macOS + Windows shells: dictation helper (SFSpeechRecognizer, macOS only), local screen capture, CUA bridge (macOS only). |
 | Projects | `electron/projects.mjs`, `server/projects.ts`, `src/state/projects.tsx` | Desktop-only local folder registry, stable `#project` handles, trusted turn context, directory creation, and shell-free GitHub cloning. |
 | Task Board | `server/tasks.ts`, `src/components/TaskBoardScreen.tsx` | Atomic local task persistence, revision-safe claims and updates, live Kanban UI, filters, assignment, and agent task tools. |
+| Trello sync | `server/trello.ts`, `server/trelloLinks.ts`, `server/trelloSync.ts` | Per-project board linking on the user's own Trello token, two-way push/pull sync with no-echo idempotency. |
 
 ## Quick start
 

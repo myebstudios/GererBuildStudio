@@ -28,6 +28,8 @@ const task = (patch: Partial<TaskRecord>): TaskRecord => ({
   activity: [],
   project: { id: "p1", name: "Studio", mention: "studio", available: true },
   assignee: null,
+  trelloCardId: null,
+  trelloCardUrl: null,
   ...patch,
 });
 

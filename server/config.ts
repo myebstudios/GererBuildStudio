@@ -14,6 +14,11 @@ export interface AppConfig {
    * catalog with official logos in the plugins marketplace. */
   composio?: { key?: string; apiKey?: string; url?: string };
   box?: { token?: string };
+  /** key = a Trello Power-Up API key (identifies this app, not secret);
+   * token = the connected user's personal Trello token, obtained through
+   * Trello's own browser authorize flow. Powers per-project board linking
+   * and sync in trello.ts / trelloLinks.ts / trelloSync.ts. */
+  trello?: { key?: string; token?: string };
   /** The person using the app (collected in onboarding, shown in the
    * sidebar). Not a secret — echoed back by GET /api/config. */
   profile?: { name?: string; email?: string };
@@ -42,6 +47,7 @@ export function loadConfig(): AppConfig {
   cfg.xai = { key: process.env.XAI_API_KEY, ...cfg.xai };
   cfg.composio = { key: process.env.COMPOSIO_KEY, ...cfg.composio };
   cfg.box = { token: process.env.BOX_TOKEN, ...cfg.box };
+  cfg.trello = { key: process.env.TRELLO_API_KEY, ...cfg.trello };
   return cfg;
 }
 
@@ -55,7 +61,7 @@ export function saveConfig(patch: Partial<AppConfig>): void {
   } catch {
     /* first write */
   }
-  for (const key of ["xai", "composio", "box", "profile"] as const) {
+  for (const key of ["xai", "composio", "box", "trello", "profile"] as const) {
     if (patch[key] && typeof patch[key] === "object") {
       disk[key] = { ...(disk[key] as object), ...patch[key] };
     }

@@ -13,7 +13,11 @@ export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
 export type TaskActor =
   | { kind: "user" }
-  | { kind: "bot"; botId: string; name: string };
+  | { kind: "bot"; botId: string; name: string }
+  // a background Trello pull applied a change the user didn't make
+  // themselves — kept distinct so the activity trail never misattributes
+  // it to "You". See server/trelloSync.ts.
+  | { kind: "sync"; source: "trello" };
 
 export interface TaskActivity {
   id: string;
@@ -42,6 +46,11 @@ export interface TaskRecord {
   createdBy: TaskActor;
   updatedBy: TaskActor;
   activity: TaskActivity[];
+  /** The linked Trello card mirroring this task, if its project is linked
+   * to a board (server/trelloLinks.ts). Set by TaskStore.linkTrelloCard;
+   * never accepted through CreateTaskInput/UpdateTaskInput. */
+  trelloCardId: string | null;
+  trelloCardUrl: string | null;
 }
 
 export interface TaskFilters {
@@ -158,7 +167,10 @@ function cleanPosition(value: unknown): number {
 function isActor(value: unknown): value is TaskActor {
   if (!value || typeof value !== "object") return false;
   const actor = value as Record<string, unknown>;
-  return actor.kind === "user" || (actor.kind === "bot" && typeof actor.botId === "string" && typeof actor.name === "string");
+  if (actor.kind === "user") return true;
+  if (actor.kind === "bot") return typeof actor.botId === "string" && typeof actor.name === "string";
+  if (actor.kind === "sync") return typeof actor.source === "string";
+  return false;
 }
 
 function validateSavedTask(value: unknown): TaskRecord {
@@ -174,6 +186,8 @@ function validateSavedTask(value: unknown): TaskRecord {
     (task.dueAt === null || typeof task.dueAt === "number") &&
     (task.projectId === null || typeof task.projectId === "string") &&
     (task.assigneeBotId === null || typeof task.assigneeBotId === "string") &&
+    (task.trelloCardId === undefined || task.trelloCardId === null || typeof task.trelloCardId === "string") &&
+    (task.trelloCardUrl === undefined || task.trelloCardUrl === null || typeof task.trelloCardUrl === "string") &&
     typeof task.position === "number" && Number.isFinite(task.position) &&
     typeof task.revision === "number" && Number.isInteger(task.revision) && task.revision > 0 &&
     typeof task.createdAt === "number" && typeof task.updatedAt === "number" &&
@@ -184,11 +198,17 @@ function validateSavedTask(value: unknown): TaskRecord {
       return typeof event.id === "string" && typeof event.at === "number" && typeof event.action === "string" && isActor(event.actor);
     });
   if (!valid) throw new TaskValidationError("Saved task data is invalid. The file was left unchanged.");
-  return task as unknown as TaskRecord;
+  return {
+    ...(task as unknown as TaskRecord),
+    trelloCardId: (task.trelloCardId as string | null | undefined) ?? null,
+    trelloCardUrl: (task.trelloCardUrl as string | null | undefined) ?? null,
+  };
 }
 
 function actorLabel(actor: TaskActor): string {
-  return actor.kind === "user" ? "You" : actor.name;
+  if (actor.kind === "user") return "You";
+  if (actor.kind === "bot") return actor.name;
+  return "Trello sync";
 }
 
 function activity(action: TaskActivity["action"], actor: TaskActor, detail?: string): TaskActivity {
@@ -319,6 +339,8 @@ export class TaskStore {
       createdBy: actor,
       updatedBy: actor,
       activity: [activity("created", actor)],
+      trelloCardId: null,
+      trelloCardUrl: null,
     };
     this.tasks.push(task);
     this.tasks.sort(compareTasks);
@@ -410,6 +432,21 @@ export class TaskStore {
       updatedBy: actor,
       activity: [...current.activity, activity("delegated", actor, `Assigned to ${cleanText(targetName, "Assignee name", 200, true)}`)].slice(-MAX_ACTIVITY),
     };
+    this.tasks = this.tasks.map((task) => task.id === id ? next : task).sort(compareTasks);
+    this.save();
+    return next;
+  }
+
+  /** Attaches (or updates) the Trello card mirroring this task. Used only
+   * by server/trelloSync.ts, which owns the id/url pair end to end — no
+   * revision check, since this never touches user-authored content and is
+   * safe to retry. A no-op activity entry so the trail stays about work,
+   * not plumbing. */
+  linkTrelloCard(id: string, cardId: string, cardUrl: string): TaskRecord {
+    const current = this.get(id);
+    if (!current) throw new TaskNotFoundError();
+    if (current.trelloCardId === cardId && current.trelloCardUrl === cardUrl) return current;
+    const next: TaskRecord = { ...current, trelloCardId: cardId, trelloCardUrl: cardUrl, revision: current.revision + 1, updatedAt: Date.now() };
     this.tasks = this.tasks.map((task) => task.id === id ? next : task).sort(compareTasks);
     this.save();
     return next;

@@ -123,6 +123,15 @@ const TOOLS = [
       required: ["task_id", "revision", "bot_id"],
     },
   },
+  {
+    name: "delete_task",
+    description: "Permanently delete a task from the shared board. Requires its current revision. Use sparingly — prefer moving a task to done over deleting finished work.",
+    inputSchema: {
+      type: "object",
+      properties: { task_id: { type: "string" }, revision: { type: "integer" } },
+      required: ["task_id", "revision"],
+    },
+  },
 ].filter((tool) => DEPTH < 1 || (tool.name !== "list_bots" && tool.name !== "ask_bot"));
 
 type Json = Record<string, unknown>;
@@ -170,6 +179,7 @@ function renderTask(task: Json): string {
     `assignee: ${assignee?.name ?? "unassigned"}${assignee?.id ? ` (${assignee.id})` : ""}`,
     `project: ${project ? `#${project.mention} (${project.name})${project.path ? ` at ${project.path}` : project.available ? "" : " [unavailable]"}` : "none"}`,
   ];
+  if (task.trelloCardUrl) lines.push(`trello: ${task.trelloCardUrl}`);
   if (task.tags && (task.tags as unknown[]).length) lines.push(`tags: ${(task.tags as unknown[]).join(", ")}`);
   if (task.dueAt) lines.push(`due: ${new Date(Number(task.dueAt)).toISOString()}`);
   if (task.description) lines.push(`description: ${task.description}`);
@@ -252,6 +262,15 @@ async function callTool(name: string, args: Json): Promise<{ text: string; isErr
       method: "POST", body: JSON.stringify({ revision, botId }),
     });
     return { text: `Delegated task:\n${renderTask(r.task as Json)}` };
+  }
+  if (name === "delete_task") {
+    const taskId = String(args.task_id ?? "").trim();
+    const revision = Number(args.revision);
+    if (!taskId || !Number.isInteger(revision)) return { text: "delete_task needs task_id and revision.", isError: true };
+    await api(`/api/internal/tasks/${encodeURIComponent(taskId)}`, {
+      method: "DELETE", body: JSON.stringify({ revision }),
+    });
+    return { text: `Deleted task ${taskId}.` };
   }
   return { text: `Unknown tool: ${name}`, isError: true };
 }

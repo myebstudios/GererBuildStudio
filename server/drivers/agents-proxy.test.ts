@@ -83,7 +83,7 @@ beforeAll(async () => {
       res.writeHead(200, { "content-type": "application/json" });
       return res.end(JSON.stringify({ tasks: [task] }));
     }
-    if (req.url?.startsWith("/api/internal/tasks") && ["POST", "PATCH"].includes(req.method ?? "")) {
+    if (req.url?.startsWith("/api/internal/tasks") && ["POST", "PATCH", "DELETE"].includes(req.method ?? "")) {
       let data = "";
       req.on("data", (c) => (data += c));
       req.on("end", () => {
@@ -136,7 +136,7 @@ describe("agents-proxy MCP surface", () => {
     expect(init.result.serverInfo.name).toContain("agents");
     const list = await rpc("tools/list");
     expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual([
-      "list_bots", "ask_bot", "list_tasks", "create_task", "claim_task", "update_task", "delegate_task",
+      "list_bots", "ask_bot", "list_tasks", "create_task", "claim_task", "update_task", "delegate_task", "delete_task",
     ]);
   });
 
@@ -221,6 +221,16 @@ describe("agents-proxy MCP surface", () => {
       url: "/api/internal/tasks/task-one/delegate",
       body: { revision: 3, botId: "bot-helper" },
     });
+  });
+
+  it("deletes a task with its revision", async () => {
+    const res = await callTool("delete_task", { task_id: "task-one", revision: 3 });
+    expect(lastTaskRequest).toMatchObject({
+      method: "DELETE",
+      url: "/api/internal/tasks/task-one",
+      body: { revision: 3 },
+    });
+    expect(res.result.content[0].text).toContain("Deleted task task-one");
   });
 
   it("returns the latest task when an update conflicts", async () => {

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   TaskConflictError,
+  TaskNotFoundError,
   TaskStore,
   TaskValidationError,
   filterTasks,
@@ -137,6 +138,27 @@ describe("TaskStore", () => {
     expect(() => store.delete(moved.id, delegated.revision)).toThrow(TaskConflictError);
     expect(store.delete(moved.id, moved.revision).id).toBe(moved.id);
     expect(store.list()).toEqual([]);
+  });
+
+  it("defaults trelloCardId/Url to null and links a card without a revision check", () => {
+    const { root, store } = fixture();
+    const created = store.create({ title: "Mirror me" }, user);
+    expect(created).toMatchObject({ trelloCardId: null, trelloCardUrl: null });
+
+    const linked = store.linkTrelloCard(created.id, "card-1", "https://trello.com/c/abc123");
+    expect(linked).toMatchObject({ trelloCardId: "card-1", trelloCardUrl: "https://trello.com/c/abc123", revision: 2 });
+    expect(store.linkTrelloCard(created.id, "card-1", "https://trello.com/c/abc123")).toEqual(linked);
+    expect(() => store.linkTrelloCard("missing", "card-1", "https://trello.com/c/abc123")).toThrow(TaskNotFoundError);
+    expect(new TaskStore(root).get(created.id)).toEqual(linked);
+  });
+
+  it("attributes a Trello-sync actor distinctly and round-trips it through persistence", () => {
+    const { root, store } = fixture();
+    const sync: TaskActor = { kind: "sync", source: "trello" };
+    const created = store.create({ title: "Imported from Trello" }, sync);
+    const updated = store.update(created.id, created.revision, { description: "Edited on Trello" }, sync);
+    expect(updated.activity.at(-1)?.actor).toEqual(sync);
+    expect(new TaskStore(root).get(created.id)?.updatedBy).toEqual(sync);
   });
 
   it("composes task filters and keeps board ordering", () => {

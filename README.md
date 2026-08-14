@@ -170,7 +170,7 @@ flowchart LR
     subgraph app ["App — React + Tailwind (5199)"]
         UI[Chat UI · model picker · computer panel]
     end
-    subgraph server ["Harness server (127.0.0.1:8799)"]
+    subgraph server ["Harness server (127.0.0.1:8899)"]
         REG[Driver registry] --> BUS[Event bus → SSE]
         BROKER[Permission broker]
     end
@@ -207,7 +207,7 @@ drag it to Applications, open it. The harness server is embedded — no setup.
 git clone https://github.com/milind-soni/GererBuildStudio && cd GererBuildStudio
 pnpm install
 
-pnpm dev:server    # harness server → 127.0.0.1:8799
+pnpm dev:server    # harness server → 127.0.0.1:8899
 pnpm dev           # app → http://127.0.0.1:5199
 pnpm dev:desktop   # or the Electron shell
 ```

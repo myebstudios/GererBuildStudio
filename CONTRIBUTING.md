@@ -26,7 +26,7 @@ test suite runs on macOS, Linux, and Windows.
 git clone https://github.com/milind-soni/GererBuildStudio && cd GererBuildStudio
 pnpm install
 
-pnpm dev:server    # harness server → 127.0.0.1:8799
+pnpm dev:server    # harness server → 127.0.0.1:8899
 pnpm dev           # app → http://127.0.0.1:5199
 pnpm dev:desktop   # Electron shell (macOS)
 

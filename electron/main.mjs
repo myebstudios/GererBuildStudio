@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 127.0.0.1 explicitly — vite binds IPv4; a bare "localhost" here can
 // resolve to ::1 and paint a black window
 const DEV_URL = process.env.ELECTRON_START_URL ?? "http://127.0.0.1:5199";
-let SERVER_PORT = 8799;
+let SERVER_PORT = 8899;
 const APP_ICON = path.join(__dirname, "resources/app-icon.png");
 
 // Packaged: the harness server ships in Resources (compiled JS, zero deps)
@@ -90,7 +90,7 @@ async function startServerPackaged() {
   // two passes: a quit-and-reopen relaunch can race the dying instance's
   // server during teardown — one settle-and-retry covers it
   for (let attempt = 0; attempt < 2; attempt++) {
-    for (const port of [8799, 18799, 28799]) {
+    for (const port of [8899, 18899, 28899]) {
       const proc = await startServerOn(port);
       if (proc) {
         serverProc = proc;

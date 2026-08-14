@@ -10,7 +10,7 @@ const viteBin = path.join(rootDir, "node_modules", "vite", "bin", "vite.js");
 const serverScript = path.join(rootDir, "server", "index.ts");
 
 const VITE_PORT = 5199;
-const SERVER_PORT = Number(process.env.GBS_PORT) || 8799;
+const SERVER_PORT = Number(process.env.GBS_PORT) || 8899;
 
 function checkHarness(port, timeoutMs = 600) {
   return new Promise((resolve) => {

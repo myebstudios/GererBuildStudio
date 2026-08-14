@@ -28,7 +28,7 @@ import {
   type UpdateTaskInput,
 } from "./tasks.ts";
 
-const PORT = Number(process.env.GBS_PORT || 8799);
+const PORT = Number(process.env.GBS_PORT || 8899);
 const STATIC_DIR = process.env.GBS_STATIC_DIR || null;
 const MIME: Record<string, string> = {
   ".html": "text/html",
@@ -1438,7 +1438,7 @@ const server = createServer(async (req, res) => {
       }
     }
 
-    // packaged app: the server serves the built UI too (window → :8799 for
+    // packaged app: the server serves the built UI too (window → :8899 for
     // everything, no dev proxy to die). GBS_STATIC_DIR is set by Electron.
     if (method === "GET" && !path.startsWith("/api/") && STATIC_DIR) {
       const safe = path === "/" ? "/index.html" : path.replace(/\.\./g, "");

@@ -16,7 +16,7 @@ import { ProviderRegistry } from "./harness/registry.js";
 import { automaticHandoffBots, mentionedBots, Store } from "./store.js";
 import { readRegisteredProjects, resolveProjectContext } from "./projects.js";
 import { TaskConflictError, TaskStore, } from "./tasks.js";
-const PORT = Number(process.env.GBS_PORT || 8799);
+const PORT = Number(process.env.GBS_PORT || 8899);
 const STATIC_DIR = process.env.GBS_STATIC_DIR || null;
 const MIME = {
     ".html": "text/html",
@@ -1430,7 +1430,7 @@ const server = createServer(async (req, res) => {
                     return json(res, 200, await box.screenshotBox(cfg, botId));
             }
         }
-        // packaged app: the server serves the built UI too (window → :8799 for
+        // packaged app: the server serves the built UI too (window → :8899 for
         // everything, no dev proxy to die). GBS_STATIC_DIR is set by Electron.
         if (method === "GET" && !path.startsWith("/api/") && STATIC_DIR) {
             const safe = path === "/" ? "/index.html" : path.replace(/\.\./g, "");

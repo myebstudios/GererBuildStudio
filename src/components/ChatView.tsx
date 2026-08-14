@@ -12,6 +12,7 @@ import {
   Monitor,
   Pencil,
   RefreshCw,
+  Smartphone,
   Square,
   X,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import { ReactionBar, ReactionChips } from "./Reactions";
 import { cn } from "@/lib/cn";
 import { ProjectMentionText } from "./ProjectMentionText";
 import { AttachmentList } from "./AttachmentViewer";
+import { MobilePreviewPanel } from "./MobilePreviewPanel";
 import type { Attachment } from "@/state/store";
 
 /** Long user messages collapse behind a fade so pasted walls of text don't
@@ -589,8 +591,13 @@ export function ChatView({ bot }: { bot: Bot }) {
   // (upstream-verified failure). Scrolling back to the end re-arms it.
   const [follow, setFollow] = useState(true);
   const touchY = useRef(0);
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(() => {
+    const saved = localStorage.getItem("chat-mobile-preview-open");
+    return saved === null ? window.matchMedia("(min-width: 1180px)").matches : saved === "true";
+  });
 
   useEffect(() => setFollow(true), [bot.id]);
+  useEffect(() => localStorage.setItem("chat-mobile-preview-open", String(mobilePreviewOpen)), [mobilePreviewOpen]);
   useEffect(() => {
     if (follow) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [bot.id, messages.length, streaming, reasoning, bot.busy, follow]);
@@ -621,7 +628,8 @@ export function ChatView({ bot }: { bot: Bot }) {
   const noDrag = isWin ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined;
 
   return (
-    <main className="relative flex h-full min-w-0 flex-1 flex-col bg-app">
+    <main className="relative flex h-full min-w-0 flex-1 bg-app">
+      <section className="relative flex h-full min-w-0 flex-1 flex-col">
       {/* Header */}
       <div
         className={cn("flex items-center justify-between px-5 py-3", isWin && "pr-[148px]")}
@@ -664,6 +672,19 @@ export function ChatView({ bot }: { bot: Bot }) {
             title="Bot's computer"
           >
             <Monitor size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobilePreviewOpen((open) => !open)}
+            aria-label={mobilePreviewOpen ? "Hide mobile preview" : "Show mobile preview"}
+            aria-pressed={mobilePreviewOpen}
+            className={cn(
+              "relative flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px]",
+              mobilePreviewOpen ? "bg-raised text-ink" : "text-ink-secondary hover:bg-raised/60 hover:text-ink",
+            )}
+          >
+            <Smartphone size={14} />
+            <span className="hidden sm:inline">Preview</span>
           </button>
         </div>
       </div>
@@ -759,7 +780,26 @@ export function ChatView({ bot }: { bot: Bot }) {
         bot={bot}
         onEditLast={lastUserMessage ? () => setEditingId(lastUserMessage.id) : undefined}
       />
+      </section>
 
+      {mobilePreviewOpen && (
+        <MobilePreviewPanel onClose={() => setMobilePreviewOpen(false)} className="hidden min-[1180px]:flex" />
+      )}
+
+      {mobilePreviewOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close mobile preview panel"
+            onClick={() => setMobilePreviewOpen(false)}
+            className="absolute inset-0 z-20 bg-black/55 min-[1180px]:hidden"
+          />
+          <MobilePreviewPanel
+            onClose={() => setMobilePreviewOpen(false)}
+            className="absolute inset-y-0 right-0 z-30 flex max-w-[88vw] shadow-2xl min-[1180px]:hidden"
+          />
+        </>
+      )}
     </main>
   );
 }

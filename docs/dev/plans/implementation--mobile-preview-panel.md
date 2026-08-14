@@ -32,7 +32,7 @@ Out of scope for v1: multi-device simultaneous preview, interaction mirroring/sy
 
 2. **URL validation before it reaches the webview** (new `src/lib/mobilePreviewUrl.ts`)
    - Parse and allow only `http:`/`https:` schemes; reject `javascript:`, `file:`, `data:`, `chrome:`, and anything else with an inline error, no navigation attempt.
-   - Detect `localhost`/private-IP-range/loopback hosts and pass a boolean flag up to the UI so it can render a distinct "previewing a local/internal address" notice — not blocked, since local dev preview is a legitimate use case for this tool, but visibly called out since the guest still executes arbitrary content from that origin.
+   - Detect `localhost`/private-IP-range/loopback hosts and pass a boolean flag up to the UI. Per Angel's review, a passive notice was not sufficient — local/private results route to an explicit `confirm` state (Cancel / Continue anyway) and the webview only navigates after the user clicks through. Not blocked outright, since local dev preview is a legitimate use case for this tool, but it requires deliberate acknowledgment rather than a badge someone can glance past. Note: only the *initial* `loadUrl` is checked — in-page navigation within an already-loaded guest to a private host is not re-validated (v1 scope; flagged as a known gap, not assumed covered).
 
 3. **Device preset constants** (new `src/lib/mobileDevicePresets.ts`)
    - Document exact values instead of inlining magic numbers:
@@ -50,7 +50,8 @@ Out of scope for v1: multi-device simultaneous preview, interaction mirroring/sy
      - `loading` — from navigation start until `dom-ready`/`did-finish-load`.
      - `loaded` — normal display.
      - `error` — triggered by `did-fail-load`, or by a client-side timeout (~15s with no `dom-ready`/`did-finish-load`) so a hanging site doesn't spin forever.
-   - Local/internal-address notice rendered per item 2 when applicable.
+   - Local/internal-address confirm gate rendered per item 2 when applicable.
+   - Preview area scales the device frame down (via `ResizeObserver` measuring available space + CSS `transform: scale`) to fit the panel's height rather than overflowing/scrolling; the header (URL input + preset row) is kept to a single compact block so it doesn't eat into frame space.
 
 5. **Sidebar integration** (`src/components/GroupView.tsx`)
    - Add a `mobilePreviewOpen` local `useState`, seeded from `localStorage` (`room-mobile-preview-open`) mirroring the `activityOpen` pattern exactly, including the same `min-width: 1180px` default and overlay-below-breakpoint behavior.
@@ -71,6 +72,7 @@ Out of scope for v1: multi-device simultaneous preview, interaction mirroring/sy
 ## Risks and rollback
 
 - **Security**: enabling `webviewTag` widens the app's attack surface if hardening in step 1 is incomplete. Mitigated by enforcing guest `webPreferences` in the main process (not just the tag attributes, which a compromised renderer could alter) and by scheme allowlisting before any URL reaches the guest. @Angel to review the hardening specifically before this ships past `review--`.
+- **Security (scope of `webviewTag`)**: `webviewTag: true` is set at the `BrowserWindow` level, so it's enabled for the entire renderer, not scoped to this panel. `will-attach-webview` re-locks every guest's `webPreferences` regardless of origin, which covers the sharp edges, but if the app ever has an XSS elsewhere, that surface could now spawn a sandboxed webview too — hardening makes the blast radius small, not zero. Flagged by Angel; accepted as a known v1 tradeoff rather than scoping `webviewTag` per-panel (which Electron doesn't support per-instance without a second `BrowserWindow`).
 - **Scope creep**: Responsively-style multi-device sync is explicitly deferred; this plan only covers single-frame preview so the review surface stays small.
 - **Rollback**: the feature is additive (new files, one new header button, one new webPreferences flag). Reverting is a straightforward revert of the panel/toggle commit(s) and the `webviewTag`/`will-attach-webview` changes in `electron/main.mjs`.
 

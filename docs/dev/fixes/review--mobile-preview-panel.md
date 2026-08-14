@@ -20,7 +20,8 @@ Add a sidebar-toggled panel that renders an arbitrary URL inside fixed mobile de
 
 ## 2. URL validation
 
-- [?] **Scheme allowlist + local-address detection** — `src/lib/mobilePreviewUrl.ts`. Allows only `http:`/`https:`; rejects `javascript:`/`file:`/`data:`/`chrome:` etc. before navigation; flags `localhost`/private-IP hosts for a UI notice.
+- [?] **Scheme allowlist + local-address detection** — `src/lib/mobilePreviewUrl.ts`. Allows only `http:`/`https:`; rejects `javascript:`/`file:`/`data:`/`chrome:` etc. before navigation; flags `localhost`/private-IP hosts.
+- [?] **Local/internal-address confirm gate** — `src/components/MobilePreviewPanel.tsx`. Per Angel's review, a passive banner wasn't sufficient; local/private-IP results now stop at a `confirm` state (Cancel / Continue anyway) before `navigateTo()` ever fires — no webview `src` is set until the user explicitly confirms. In-page navigation to a private host after initial load is still not re-checked (documented as v1 scope in the plan's risk section).
 
 ## 3. Device presets
 
@@ -28,7 +29,7 @@ Add a sidebar-toggled panel that renders an arbitrary URL inside fixed mobile de
 
 ## 4. Panel + sidebar integration
 
-- [?] **`MobilePreviewPanel` component** — `src/components/MobilePreviewPanel.tsx`. URL input, device pill row, webview preview area, empty/loading/loaded/error(+timeout) states, local-address notice.
+- [?] **`MobilePreviewPanel` component** — `src/components/MobilePreviewPanel.tsx`. URL input, device pill row, webview preview area, empty/confirm/loading/loaded/error(+timeout) states, local-address confirm gate. Device frame scales down (via `ResizeObserver` + CSS `transform: scale`) to fit the available panel height instead of overflowing, and the header (URL bar + presets) is condensed to a single compact block to leave more vertical room for the frame.
 - [?] **Sidebar toggle** — `src/components/GroupView.tsx`. `mobilePreviewOpen` local state + `localStorage` (`room-mobile-preview-open`), header toggle button, dual wide/narrow render alongside `RoomActivityPanel`.
 
 ## 5. Verification

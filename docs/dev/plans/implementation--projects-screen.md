@@ -2,7 +2,7 @@
 
 ## Objective
 
-Add a full-width Projects destination to OpenMausBot where a user can:
+Add a full-width Projects destination to Gerer Build Studio where a user can:
 
 1. register an existing local project folder;
 2. create and register a new project folder under a chosen parent directory; or
@@ -16,7 +16,7 @@ The screen will match the current dark, compact interface and reuse existing lay
 - `src/components/Sidebar.tsx:470-605` contains chat search and the bot/room list, with Plugins and profile/settings actions in the footer. Its existing selected-row, hover, icon, and typography patterns should be reused for Projects.
 - `src/state/store.tsx:143-213` tracks the selected chat and open panels. The reducer already centralizes mutually exclusive panel behavior at `src/state/store.tsx:415-444`, making it the appropriate place to add the Projects-view flag and ensure panels close predictably.
 - `electron/main.mjs:109-143` creates a context-isolated renderer and `electron/preload.cjs:1-49` exposes a deliberately narrow IPC bridge. Filesystem and Git operations must stay behind this boundary rather than exposing Node to React.
-- `src/types/ogb.d.ts:4-33` describes the renderer bridge and must remain aligned with preload methods and returned project records.
+- `src/types/gbs.d.ts:4-33` describes the renderer bridge and must remain aligned with preload methods and returned project records.
 - The current Vitest configuration only includes `server/**/*.test.ts`; focused tests for a standalone Electron project service will require adding an Electron test pattern without changing the existing serial server-test behavior.
 
 ## Proposed changes
@@ -36,7 +36,7 @@ The screen will match the current dark, compact interface and reuse existing lay
 3. **Add a narrow Electron projects bridge.**
    - Create `electron/projects.mjs` containing the filesystem/persistence/Git implementation, with its dependencies injected or parameterized enough for isolated tests.
    - Register handlers from `electron/main.mjs` for listing projects, choosing a directory, adding an existing directory, creating a new directory, cloning a repository, and opening a project folder.
-   - Extend `electron/preload.cjs` with a `projects` namespace that invokes only those handlers; extend `src/types/ogb.d.ts` with exact request/result types.
+   - Extend `electron/preload.cjs` with a `projects` namespace that invokes only those handlers; extend `src/types/gbs.d.ts` with exact request/result types.
    - Use Electron's directory picker for existing folders and parent/destination selection. Cancelled pickers will resolve as cancellation, not errors.
 
 4. **Persist and validate project records.**

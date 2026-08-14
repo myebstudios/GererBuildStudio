@@ -20,7 +20,7 @@ Add a first-class Projects screen where users can register an existing folder, c
 
 ## 2. Project operations
 
-- [?] **Expose a narrow Electron project-management bridge** — `electron/main.mjs:1`, `electron/preload.cjs:1`, `src/types/ogb.d.ts:1`. Support listing projects, choosing folders, creating directories, and cloning without exposing unrestricted Node access to the renderer.
+- [?] **Expose a narrow Electron project-management bridge** — `electron/main.mjs:1`, `electron/preload.cjs:1`, `src/types/gbs.d.ts:1`. Support listing projects, choosing folders, creating directories, and cloning without exposing unrestricted Node access to the renderer.
 - [?] **Persist and validate registered projects safely** — `electron/projects.mjs:1`. Deduplicate canonical paths, reject invalid input, preserve existing folders, and store project metadata under Electron's user-data directory.
 - [?] **Implement existing-folder, new-folder, and GitHub-clone flows** — `src/components/ProjectsScreen.tsx:1`. Provide progress, cancellation-safe dialogs, actionable errors, and immediate project-list refreshes.
 

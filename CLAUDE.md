@@ -1,4 +1,4 @@
-# OpenMausBot — Claude guidelines
+# Gerer Build Studio — Claude guidelines
 
 ## Development commands
 

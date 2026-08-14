@@ -915,7 +915,7 @@ const server = createServer(async (req, res) => {
           }));
         return json(res, 200, { bots });
       }
-      const callerId = String(req.headers["x-gbs-bot-id"] ?? req.headers["x-omb-bot-id"] ?? "");
+      const callerId = String(req.headers["x-gbs-bot-id"] ?? "");
       const caller = taskActorForBot(callerId);
       if (method === "GET" && path === "/api/internal/tasks") {
         if (!caller) return json(res, 401, { error: "unknown calling agent" });

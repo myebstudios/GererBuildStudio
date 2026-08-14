@@ -30,7 +30,7 @@ The initial board will use the existing workflow statuses (`todo`, `doing`, `rev
    - Add public routes for listing board data, creating a task, patching editable fields or status/position, atomically claiming a task, delegating/assigning it, and deleting it.
    - Return sanitized project choices (ID, name, mention, and availability) without exposing filesystem paths to the browser response. Reuse the already-loaded bot roster for agent labels and filters.
    - Broadcast `task.created`, `task.updated`, and `task.deleted` SSE frames only after persistence succeeds. Errors use the existing JSON error shape; validation is `400`, missing references are `404`, and revision/claim conflicts are `409` with the latest record.
-   - User-authored commands will be attributed to `user`; internal agent calls will derive the actor from the authenticated proxy's `OMB_BOT_ID`, never from an untrusted actor field in a request body.
+   - User-authored commands will be attributed to `user`; internal agent calls will derive the actor from the authenticated proxy's `GBS_BOT_ID`, never from an untrusted actor field in a request body.
 
 3. **Integrate task state into the existing React transport and navigation.**
    - Add task types, initial loading, reducer actions, optimistic command handling, conflict replacement, and SSE folding to `src/state/store.tsx` (or a small pure helper imported there). No additional `EventSource` or renderer-side persistence will be introduced.

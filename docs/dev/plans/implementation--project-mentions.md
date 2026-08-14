@@ -2,7 +2,7 @@
 
 ## Objective
 
-Make registered projects referable through stable hashtags such as `#openmausbot` across the places where users give agents context:
+Make registered projects referable through stable hashtags such as `#gerer-build-studio` across the places where users give agents context:
 
 - direct-chat and room composers;
 - room bulletins (the room description/instructions);
@@ -26,7 +26,7 @@ Arbitrary hashtags, arbitrary client-supplied paths, Git operations, project del
 
 ## Mention contract
 
-1. Every project receives a persisted, lowercase mention slug containing letters, numbers, dots, underscores, or hyphens, for example `OpenMausBot` → `openmausbot`.
+1. Every project receives a persisted, lowercase mention slug containing letters, numbers, dots, underscores, or hyphens, for example `Gerer Build Studio` → `gerer-build-studio`.
 2. Slugs are unique. Collisions receive deterministic numeric suffixes (`project`, `project-2`, `project-3`) and remain stable even if another project is later removed.
 3. Existing records without a slug are migrated atomically on the next project-service read and written back without changing their IDs, names, paths, source, or timestamps.
 4. A mention token is `#` followed by the exact slug. It must begin at the start of text or after whitespace/punctuation and end at the slug boundary. Matching is case-insensitive; unknown hashtags remain ordinary text.
@@ -57,7 +57,7 @@ Arbitrary hashtags, arbitrary client-supplied paths, Git operations, project del
    - Update relevant placeholders/help text to teach `#` without adding a separate onboarding step.
 
 5. **Resolve trusted project context in the harness.**
-   - Add `server/projects.ts` to locate and validate the Electron `projects.json` file. Support an explicit `OMB_PROJECTS_FILE` only for isolated tests; otherwise use the platform-aware OpenMausBot user-data candidates already used by the harness.
+   - Add `server/projects.ts` to locate and validate the Electron `projects.json` file. Support an explicit `GBS_PROJECTS_FILE` only for isolated tests; otherwise use the platform-aware Gerer Build Studio user-data candidates already used by the harness.
    - Resolve mention slugs independently for every turn and verify whether each canonical path is still an existing directory.
    - Add a concise system section listing referenced projects and paths. Missing project folders are explicitly marked unavailable; unknown hashtags are ignored.
    - Never include project paths in the persisted visible message and never accept a path from the message API body.
@@ -66,7 +66,7 @@ Arbitrary hashtags, arbitrary client-supplied paths, Git operations, project del
    - Direct chats: references in the latest user message take precedence for `cwd`; if there are none, references in the bot description act as the bot's default project context.
    - Rooms: references in the latest user message take precedence, then the room bulletin, then the responding bot's description.
    - All known references from the applicable message/instructions are described to the agent, but `cwd` is set only when the highest-priority source resolves to exactly one available project. Multiple or missing references leave `cwd` unchanged and rely on explicit paths in the system context.
-   - Existing `@bot` routing remains independent: a message may combine `@Scout` and `#openmausbot`.
+   - Existing `@bot` routing remains independent: a message may combine `@Scout` and `#gerer-build-studio`.
 
 7. **Add verification and documentation.**
    - Extend Electron service tests for slug creation, collisions, and legacy migration.

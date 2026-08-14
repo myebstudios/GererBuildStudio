@@ -15,10 +15,10 @@
 //   GBS_COMMS_TOKEN  shared secret for the localhost-only internal endpoints
 //   GBS_TURN_DEPTH   this turn's comms depth (the harness refuses recursion)
 import readline from "node:readline";
-const HARNESS = process.env.GBS_HARNESS_URL ?? process.env.OMB_HARNESS_URL ?? "http://127.0.0.1:8899";
-const BOT_ID = process.env.GBS_BOT_ID ?? process.env.OMB_BOT_ID ?? "";
-const TOKEN = process.env.GBS_COMMS_TOKEN ?? process.env.OMB_COMMS_TOKEN ?? "";
-const DEPTH = Number(process.env.GBS_TURN_DEPTH ?? process.env.OMB_TURN_DEPTH ?? "0") || 0;
+const HARNESS = process.env.GBS_HARNESS_URL ?? "http://127.0.0.1:8899";
+const BOT_ID = process.env.GBS_BOT_ID ?? "";
+const TOKEN = process.env.GBS_COMMS_TOKEN ?? "";
+const DEPTH = Number(process.env.GBS_TURN_DEPTH ?? "0") || 0;
 const TOOLS = [
     {
         name: "list_bots",
@@ -130,7 +130,6 @@ async function api(path, init) {
             "content-type": "application/json",
             authorization: `Bearer ${TOKEN}`,
             "x-gbs-bot-id": BOT_ID,
-            "x-omb-bot-id": BOT_ID,
             ...(init?.headers ?? {}),
         },
     });

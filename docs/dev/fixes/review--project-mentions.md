@@ -15,7 +15,7 @@ Let users reference registered projects through stable `#project-name` mentions 
 
 ## 1. Project identity and shared UI state
 
-- [?] **Assign stable, unique mention slugs to project records** — `electron/projects.mjs:1`, `src/types/ogb.d.ts:1`. Migrate existing records safely and expose labels such as `#openmausbot`.
+- [?] **Assign stable, unique mention slugs to project records** — `electron/projects.mjs:1`, `src/types/gbs.d.ts:1`. Migrate existing records safely and expose labels such as `#gerer-build-studio`.
 - [?] **Centralize renderer project state for all project-aware surfaces** — `src/state/projects.tsx:1`, `src/App.tsx:1`, `src/components/ProjectsScreen.tsx:1`. Load once, refresh after mutations, and retain the desktop-only fallback.
 
 ## 2. Mention authoring and display

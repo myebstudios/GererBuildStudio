@@ -11,7 +11,7 @@ The optional sync mirrors status-prefixed Markdown tasks from `docs/dev/fixes/` 
 ```bash
 TRELLO_API_KEY=your_api_key
 TRELLO_TOKEN=your_token
-TRELLO_BOARD_NAME="OpenMausBot Tasks"
+TRELLO_BOARD_NAME="Gerer Build Studio Tasks"
 ```
 
 Never commit `.env.local`, the token, or a real secret. Keep `.env.example` limited to placeholders.

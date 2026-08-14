@@ -55,7 +55,7 @@ const callTool = (name: string, args: unknown) => rpc("tools/call", { name, argu
 beforeAll(async () => {
   stub = createServer((req, res) => {
     lastAuth = req.headers.authorization;
-    lastBotHeader = req.headers["x-omb-bot-id"] as string | undefined;
+    lastBotHeader = req.headers["x-gbs-bot-id"] as string | undefined;
     if (req.headers.authorization !== `Bearer ${TOKEN}`) {
       res.writeHead(401, { "content-type": "application/json" });
       return res.end(JSON.stringify({ error: "unauthorized" }));
@@ -103,10 +103,10 @@ beforeAll(async () => {
   child = spawn(process.execPath, [PROXY], {
     env: {
       ...process.env,
-      OMB_HARNESS_URL: `http://127.0.0.1:${stubPort}`,
-      OMB_BOT_ID: "bot-asker",
-      OMB_COMMS_TOKEN: TOKEN,
-      OMB_TURN_DEPTH: "0",
+      GBS_HARNESS_URL: `http://127.0.0.1:${stubPort}`,
+      GBS_BOT_ID: "bot-asker",
+      GBS_COMMS_TOKEN: TOKEN,
+      GBS_TURN_DEPTH: "0",
     },
     stdio: ["pipe", "pipe", "inherit"],
   });

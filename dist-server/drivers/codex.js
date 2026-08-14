@@ -32,7 +32,7 @@ function decodeConfig(raw) {
     };
 }
 const QUESTION_TIMEOUT_NOTE = "No answer was given — use your best judgment.";
-const DENY_TIMEOUT_NOTE = "OpenMausBot: nobody answered this permission request in time. Skip this action and finish what you can without it.";
+const DENY_TIMEOUT_NOTE = "Gerer Build Studio: nobody answered this permission request in time. Skip this action and finish what you can without it.";
 export const CodexDriver = {
     driverKind: DRIVER_KIND,
     metadata: { displayName: "Codex", supportsMultipleInstances: true },
@@ -90,7 +90,7 @@ export const CodexDriver = {
                     return;
                 state.settled = true;
                 for (const finish of [...asks.values()])
-                    finish("deny", "OpenMausBot: the turn ended");
+                    finish("deny", "Gerer Build Studio: the turn ended");
                 for (const p of rpcPending.values())
                     p.reject(new Error("turn settled"));
                 rpcPending.clear();
@@ -302,7 +302,7 @@ export const CodexDriver = {
             // handshake + kickoff; any refusal surfaces as failure, not a hang
             (async () => {
                 try {
-                    await request("initialize", { clientInfo: { name: "openmausbot", version: "1" } });
+                    await request("initialize", { clientInfo: { name: "gerer-build-studio", version: "1" } });
                     send({ jsonrpc: "2.0", method: "initialized", params: {} });
                     const cursor = typeof turn.resumeCursor === "string" ? turn.resumeCursor : null;
                     let codexThreadId = null;

@@ -317,10 +317,6 @@ function readCuaConnection(): { command: string; args: string[]; env: Record<str
   for (const dir of [
     "Gerer Build Studio",
     "gerer-build-studio",
-    "OpenMausBot",
-    "openmausbot",
-    "OpenGrokBot",
-    "opengrokbot",
   ]) {
     try {
       const p = join(userDataRoot(), dir, "cua-connection.json");

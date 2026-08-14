@@ -5,23 +5,24 @@
 //
 //   list_bots()            → the other bots in this workspace + their status
 //   ask_bot(bot_id, msg)   → send msg to that bot, wait, return its reply
+//   list/create/claim/update/delegate_task → shared task-board operations
 //
 // Speaks raw JSON-RPC 2.0 over stdio (no MCP SDK — house style, matches
 // computer-proxy / permission-proxy). All state comes from env, injected by
 // the harness when it builds the integration:
 //   OMB_HARNESS_URL  base URL of the harness (http://127.0.0.1:8799)
-//   OMB_BOT_ID       the calling bot's id (excluded from list_bots; sender)
-//   OMB_COMMS_TOKEN  shared secret for the localhost-only internal endpoints
-//   OMB_TURN_DEPTH   this turn's comms depth (the harness refuses recursion)
+//   GBS_BOT_ID       the calling bot's id (excluded from list_bots; sender)
+//   GBS_COMMS_TOKEN  shared secret for the localhost-only internal endpoints
+//   GBS_TURN_DEPTH   this turn's comms depth (the harness refuses recursion)
 import readline from "node:readline";
-const HARNESS = process.env.OMB_HARNESS_URL ?? "http://127.0.0.1:8799";
-const BOT_ID = process.env.OMB_BOT_ID ?? "";
-const TOKEN = process.env.OMB_COMMS_TOKEN ?? "";
-const DEPTH = Number(process.env.OMB_TURN_DEPTH ?? "0") || 0;
+const HARNESS = process.env.GBS_HARNESS_URL ?? process.env.OMB_HARNESS_URL ?? "http://127.0.0.1:8799";
+const BOT_ID = process.env.GBS_BOT_ID ?? process.env.OMB_BOT_ID ?? "";
+const TOKEN = process.env.GBS_COMMS_TOKEN ?? process.env.OMB_COMMS_TOKEN ?? "";
+const DEPTH = Number(process.env.GBS_TURN_DEPTH ?? process.env.OMB_TURN_DEPTH ?? "0") || 0;
 const TOOLS = [
     {
         name: "list_bots",
-        description: "List the other bots (agents) in this OpenMausBot workspace you can message, with their model and whether they're busy. Call this before ask_bot to discover who's available.",
+        description: "List the other bots (agents) in this Gerer Build Studio workspace you can message, with their model and whether they're busy. Call this before ask_bot to discover who's available.",
         inputSchema: { type: "object", properties: {} },
     },
     {
@@ -36,7 +37,88 @@ const TOOLS = [
             required: ["bot_id", "message"],
         },
     },
-];
+    {
+        name: "list_tasks",
+        description: "List work on the shared task board. Use filters to find unassigned work you can claim or tasks assigned to a specific agent. Project tasks include their trusted local path when available. Always use the task tools for changes; never edit tasks.json directly.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                text: { type: "string" },
+                project_id: { type: "string" },
+                assignee_bot_id: { type: "string", description: "A bot id, or 'unassigned'." },
+                status: { type: "string", enum: ["todo", "doing", "review", "done"] },
+                type: { type: "string", enum: ["feature", "bug", "research", "documentation", "maintenance"] },
+                priority: { type: "string", enum: ["low", "normal", "high", "urgent"] },
+                tag: { type: "string" },
+                overdue: { type: "boolean" },
+            },
+        },
+    },
+    {
+        name: "create_task",
+        description: "Create a structured task on the shared board. You may leave it unassigned, assign it to yourself, or delegate it to another bot id.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                title: { type: "string" },
+                description: { type: "string" },
+                acceptance_criteria: { type: "array", items: { type: "string" } },
+                status: { type: "string", enum: ["todo", "doing", "review", "done"] },
+                type: { type: "string", enum: ["feature", "bug", "research", "documentation", "maintenance"] },
+                priority: { type: "string", enum: ["low", "normal", "high", "urgent"] },
+                tags: { type: "array", items: { type: "string" } },
+                due_at: { type: "string", description: "An ISO-8601 date/time." },
+                project_id: { type: "string" },
+                assignee_bot_id: { type: "string" },
+            },
+            required: ["title"],
+        },
+    },
+    {
+        name: "claim_task",
+        description: "Atomically claim an unassigned, incomplete task for yourself and move it to doing. Requires the revision returned by list_tasks.",
+        inputSchema: {
+            type: "object",
+            properties: { task_id: { type: "string" }, revision: { type: "integer" } },
+            required: ["task_id", "revision"],
+        },
+    },
+    {
+        name: "update_task",
+        description: "Update content or progress on a shared task. Requires its current revision; conflicts return the latest task instead of overwriting it.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                task_id: { type: "string" },
+                revision: { type: "integer" },
+                title: { type: "string" },
+                description: { type: "string" },
+                acceptance_criteria: { type: "array", items: { type: "string" } },
+                status: { type: "string", enum: ["todo", "doing", "review", "done"] },
+                type: { type: "string", enum: ["feature", "bug", "research", "documentation", "maintenance"] },
+                priority: { type: "string", enum: ["low", "normal", "high", "urgent"] },
+                tags: { type: "array", items: { type: "string" } },
+                due_at: { type: ["string", "null"] },
+                project_id: { type: ["string", "null"] },
+                assignee_bot_id: { type: ["string", "null"] },
+            },
+            required: ["task_id", "revision"],
+        },
+    },
+    {
+        name: "delegate_task",
+        description: "Assign an incomplete task to another visible bot. Call list_bots for the target id and use the task's current revision.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                task_id: { type: "string" },
+                revision: { type: "integer" },
+                bot_id: { type: "string" },
+            },
+            required: ["task_id", "revision", "bot_id"],
+        },
+    },
+].filter((tool) => DEPTH < 1 || (tool.name !== "list_bots" && tool.name !== "ask_bot"));
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + "\n");
 const ok = (id, result) => send({ jsonrpc: "2.0", id, result });
 const rpcErr = (id, code, message) => send({ jsonrpc: "2.0", id, error: { code, message } });
@@ -44,12 +126,52 @@ const textResult = (id, text, isError = false) => ok(id, { content: [{ type: "te
 async function api(path, init) {
     const res = await fetch(HARNESS + path, {
         ...init,
-        headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}`, ...(init?.headers ?? {}) },
+        headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${TOKEN}`,
+            "x-gbs-bot-id": BOT_ID,
+            "x-omb-bot-id": BOT_ID,
+            ...(init?.headers ?? {}),
+        },
     });
     const body = (await res.json().catch(() => ({})));
-    if (!res.ok)
-        throw new Error(String(body.error ?? `HTTP ${res.status}`));
+    if (!res.ok) {
+        const latest = body.latest ? `\nLatest task:\n${JSON.stringify(body.latest, null, 2)}` : "";
+        throw new Error(`${String(body.error ?? `HTTP ${res.status}`)}${latest}`);
+    }
     return body;
+}
+function taskInput(args) {
+    const mapped = {};
+    const fields = [
+        ["title", "title"], ["description", "description"], ["acceptance_criteria", "acceptanceCriteria"],
+        ["status", "status"], ["type", "type"], ["priority", "priority"], ["tags", "tags"],
+        ["due_at", "dueAt"], ["project_id", "projectId"], ["assignee_bot_id", "assigneeBotId"],
+    ];
+    for (const [source, target] of fields)
+        if (args[source] !== undefined)
+            mapped[target] = args[source];
+    return mapped;
+}
+function renderTask(task) {
+    const project = task.project;
+    const assignee = task.assignee;
+    const lines = [
+        `${task.title} [id: ${task.id}, revision: ${task.revision}]`,
+        `status: ${task.status} | priority: ${task.priority} | type: ${task.type}`,
+        `assignee: ${assignee?.name ?? "unassigned"}${assignee?.id ? ` (${assignee.id})` : ""}`,
+        `project: ${project ? `#${project.mention} (${project.name})${project.path ? ` at ${project.path}` : project.available ? "" : " [unavailable]"}` : "none"}`,
+    ];
+    if (task.tags && task.tags.length)
+        lines.push(`tags: ${task.tags.join(", ")}`);
+    if (task.dueAt)
+        lines.push(`due: ${new Date(Number(task.dueAt)).toISOString()}`);
+    if (task.description)
+        lines.push(`description: ${task.description}`);
+    if (task.acceptanceCriteria && task.acceptanceCriteria.length) {
+        lines.push(`acceptance criteria:\n${task.acceptanceCriteria.map((item) => `- ${item}`).join("\n")}`);
+    }
+    return lines.join("\n");
 }
 async function callTool(name, args) {
     if (name === "list_bots") {
@@ -79,6 +201,62 @@ async function callTool(name, args) {
             return { text: `Couldn't reach that bot: ${r.error}`, isError: true };
         return { text: `${r.botName ?? "Bot"} replied:\n${r.text ?? "(no reply)"}` };
     }
+    if (name === "list_tasks") {
+        const query = new URLSearchParams();
+        for (const [source, target] of [
+            ["text", "text"], ["project_id", "projectId"], ["assignee_bot_id", "assigneeBotId"],
+            ["status", "status"], ["type", "type"], ["priority", "priority"], ["tag", "tag"], ["overdue", "overdue"],
+        ]) {
+            if (args[source] !== undefined)
+                query.set(target, String(args[source]));
+        }
+        const r = await api(`/api/internal/tasks${query.size ? `?${query}` : ""}`);
+        const tasks = r.tasks ?? [];
+        if (!tasks.length)
+            return { text: "No tasks match those filters." };
+        return { text: `Shared task board (${tasks.length}):\n\n${tasks.map(renderTask).join("\n\n---\n\n")}` };
+    }
+    if (name === "create_task") {
+        if (!String(args.title ?? "").trim())
+            return { text: "create_task needs a title.", isError: true };
+        const r = await api("/api/internal/tasks", { method: "POST", body: JSON.stringify(taskInput(args)) });
+        return { text: `Created task:\n${renderTask(r.task)}` };
+    }
+    if (name === "claim_task") {
+        const taskId = String(args.task_id ?? "").trim();
+        const revision = Number(args.revision);
+        if (!taskId || !Number.isInteger(revision))
+            return { text: "claim_task needs task_id and revision.", isError: true };
+        const r = await api(`/api/internal/tasks/${encodeURIComponent(taskId)}/claim`, {
+            method: "POST", body: JSON.stringify({ revision }),
+        });
+        return { text: `Claimed task:\n${renderTask(r.task)}` };
+    }
+    if (name === "update_task") {
+        const taskId = String(args.task_id ?? "").trim();
+        const revision = Number(args.revision);
+        const patch = taskInput(args);
+        if (!taskId || !Number.isInteger(revision))
+            return { text: "update_task needs task_id and revision.", isError: true };
+        if (!Object.keys(patch).length)
+            return { text: "update_task needs at least one field to change.", isError: true };
+        const r = await api(`/api/internal/tasks/${encodeURIComponent(taskId)}`, {
+            method: "PATCH", body: JSON.stringify({ revision, patch }),
+        });
+        return { text: `Updated task:\n${renderTask(r.task)}` };
+    }
+    if (name === "delegate_task") {
+        const taskId = String(args.task_id ?? "").trim();
+        const botId = String(args.bot_id ?? "").trim();
+        const revision = Number(args.revision);
+        if (!taskId || !botId || !Number.isInteger(revision)) {
+            return { text: "delegate_task needs task_id, revision, and bot_id.", isError: true };
+        }
+        const r = await api(`/api/internal/tasks/${encodeURIComponent(taskId)}/delegate`, {
+            method: "POST", body: JSON.stringify({ revision, botId }),
+        });
+        return { text: `Delegated task:\n${renderTask(r.task)}` };
+    }
     return { text: `Unknown tool: ${name}`, isError: true };
 }
 async function handle(msg) {
@@ -92,7 +270,7 @@ async function handle(msg) {
             ok(id, {
                 protocolVersion: params.protocolVersion ?? "2024-11-05",
                 capabilities: { tools: {} },
-                serverInfo: { name: "opengrokbot-agents", version: "0.1.0" },
+                serverInfo: { name: "gerer-build-studio-agents", version: "0.1.0" },
             });
             return;
         case "notifications/initialized":

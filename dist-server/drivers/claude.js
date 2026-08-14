@@ -40,8 +40,11 @@ const PERM_PROXY_PATH = proxyPath("permission-proxy");
 // in the packaged app process.execPath is the Electron binary — this env
 // makes it behave as plain node for the spawned MCP proxies (harmless in dev)
 const NODE_ENV_FLAG = { ELECTRON_RUN_AS_NODE: "1" };
-const DENY_TIMEOUT_NOTE = "OpenMausBot: nobody answered this permission request in time. Skip this action and finish what you can without it.";
-const QUESTION_TIMEOUT_NOTE = "OpenMausBot: nobody answered in time. Use your best judgment and continue.";
+/*
+const DENY_TIMEOUT_NOTE =
+  "Gerer Build Studio: nobody answered this permission request in time. Skip this action and finish what you can without it.";
+const QUESTION_TIMEOUT_NOTE = "Gerer Build Studio: nobody answered in time. Use your best judgment and continue.";
+*/
 /** One human-readable line for an ask — what the card subtitle shows. */
 function askSummary(ask) {
     const input = ask.input ?? {};
@@ -59,7 +62,7 @@ function permissionSocketPath(threadId) {
     return brokerSocketPath(DATA_DIR, tag);
 }
 function createPermissionBroker(opts) {
-    const timeoutMs = opts.timeoutMs ?? 15 * 60_000;
+    // const timeoutMs = opts.timeoutMs ?? 15 * 60_000;
     const pending = new Map();
     try {
         unlinkSync(opts.socketPath);
@@ -89,17 +92,24 @@ function createPermissionBroker(opts) {
                 const finish = (behavior, message, source) => {
                     if (!pending.delete(askId))
                         return;
-                    clearTimeout(timer);
+                    // clearTimeout(timer);
                     try {
                         conn.write(JSON.stringify({ t: "answer", id: askId, behavior, message }) + "\n");
                     }
                     catch { }
                     opts.onResolve({ ...ask, behavior, source });
                 };
-                const timer = setTimeout(() => kind === "question"
-                    ? finish("answer", QUESTION_TIMEOUT_NOTE, "timeout")
-                    : finish("deny", DENY_TIMEOUT_NOTE, "timeout"), timeoutMs);
+                // timeout disabled by user request
+                /*
+                const timer = setTimeout(
+                  () =>
+                    kind === "question"
+                      ? finish("answer", QUESTION_TIMEOUT_NOTE, "timeout")
+                      : finish("deny", DENY_TIMEOUT_NOTE, "timeout"),
+                  timeoutMs,
+                );
                 timer.unref?.();
+                */
                 pending.set(askId, { ask, finish });
                 opts.onAsk(ask);
             }
@@ -121,9 +131,9 @@ function createPermissionBroker(opts) {
         close() {
             for (const p of [...pending.values()]) {
                 if (p.ask.kind === "question")
-                    p.finish("answer", "OpenMausBot: the turn is ending — wrap up.", "shutdown");
+                    p.finish("answer", "Gerer Build Studio: the turn is ending — wrap up.", "shutdown");
                 else
-                    p.finish("deny", "OpenMausBot: the turn ended", "shutdown");
+                    p.finish("deny", "Gerer Build Studio: the turn ended", "shutdown");
             }
             try {
                 server.close();
@@ -223,8 +233,8 @@ export const ClaudeDriver = {
                     args: [PROXY_PATH],
                     env: {
                         ...NODE_ENV_FLAG,
-                        OGB_BOX_ID: turn.integrations.computer.boxId,
-                        OGB_BOX_TOKEN: turn.integrations.computer.token,
+                        GBS_BOX_ID: turn.integrations.computer.boxId,
+                        GBS_BOX_TOKEN: turn.integrations.computer.token,
                     },
                 };
                 allowed.push("mcp__computer");
@@ -269,9 +279,9 @@ export const ClaudeDriver = {
                         source: resolved.source,
                     }),
                 });
-                args.push("--permission-prompt-tool", "mcp__ogb__approve");
-                mcpServers.ogb = { command: process.execPath, args: [PERM_PROXY_PATH, socketPath], env: { ...NODE_ENV_FLAG } };
-                allowed.push("mcp__ogb");
+                args.push("--permission-prompt-tool", "mcp__gbs__approve");
+                mcpServers.gbs = { command: process.execPath, args: [PERM_PROXY_PATH, socketPath], env: { ...NODE_ENV_FLAG } };
+                allowed.push("mcp__gbs");
             }
             if (Object.keys(mcpServers).length) {
                 args.push("--mcp-config", JSON.stringify({ mcpServers }));

@@ -59,7 +59,7 @@ mac:
 
 dmg:
   sign: true
-  artifactName: OpenMausBot-${version}.dmg
+  artifactName: GererBuildStudio-${version}.dmg
 
 win:
   target:
@@ -72,4 +72,4 @@ win:
 nsis:
   oneClick: true
   perMachine: false
-  artifactName: OpenMausBot-${version}-setup.${ext}
+  artifactName: GererBuildStudio-${version}-setup.${ext}

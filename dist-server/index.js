@@ -1,21 +1,23 @@
-// OpenMausBot server — the harness host. Clients hold no transports
+// Gerer Build Studio server — the harness host. Clients hold no transports
 // (upstream rule): the React app dispatches typed commands over HTTP and
 // folds one SSE event stream; every provider process runs here.
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { homedir } from "node:os";
-import { dirname, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as box from "./box.js";
 import * as composio from "./composio.js";
-import { ensureDirs, instanceConfigs, loadConfig, saveConfig, EVENTS_DIR, NATIVE_DIR } from "./config.js";
+import { ensureDirs, instanceConfigs, loadConfig, saveConfig, DATA_DIR, EVENTS_DIR, NATIVE_DIR } from "./config.js";
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.js";
 import { EventBus } from "./harness/bus.js";
 import { ProviderRegistry } from "./harness/registry.js";
-import { mentionedBots, Store } from "./store.js";
-const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
-const STATIC_DIR = process.env.OMB_STATIC_DIR || null;
+import { automaticHandoffBots, mentionedBots, Store } from "./store.js";
+import { readRegisteredProjects, resolveProjectContext } from "./projects.js";
+import { TaskConflictError, TaskStore, } from "./tasks.js";
+const PORT = Number(process.env.GBS_PORT || 8799);
+const STATIC_DIR = process.env.GBS_STATIC_DIR || null;
 const MIME = {
     ".html": "text/html",
     ".js": "text/javascript",
@@ -53,10 +55,10 @@ function agentsIntegration(botId, depth) {
         args: [agentsProxyPath],
         env: {
             ...AGENTS_NODE_FLAG,
-            OMB_HARNESS_URL: `http://127.0.0.1:${PORT}`,
-            OMB_BOT_ID: botId,
-            OMB_COMMS_TOKEN: COMMS_TOKEN,
-            OMB_TURN_DEPTH: String(depth),
+            GBS_HARNESS_URL: `http://127.0.0.1:${PORT}`,
+            GBS_BOT_ID: botId,
+            GBS_COMMS_TOKEN: COMMS_TOKEN,
+            GBS_TURN_DEPTH: String(depth),
         },
     };
 }
@@ -102,6 +104,7 @@ async function defaultSelection() {
 }
 let bootSelection = { instanceId: "claude", model: "claude-sonnet-5" };
 const store = new Store(() => bootSelection);
+const taskStore = new TaskStore(DATA_DIR);
 bootSelection = await defaultSelection();
 store.seedIfEmpty();
 // ── SSE fan-out to clients ─────────────────────────────────────────────
@@ -117,6 +120,14 @@ function broadcast(payload) {
         }
     }
 }
+function deleteThreadLogs(threadId) {
+    for (const dir of [EVENTS_DIR, NATIVE_DIR]) {
+        try {
+            unlinkSync(join(dir, `${threadId}.ndjson`));
+        }
+        catch { }
+    }
+}
 // ── server-side event folding (upstream's ingestion worker, miniature) ──
 // The canonical stream is the source of truth; the persisted transcript
 // and every client view are projections of it.
@@ -126,12 +137,12 @@ const askMessageByRequest = new Map(); // requestId -> messageId
 // records the active member here before dispatching its turn.
 const groupSpeakers = new Map();
 bus.subscribe((event) => {
-    broadcast({ kind: "runtime", event });
     const bot = store.botByThread(event.threadId);
     const group = bot ? undefined : store.groupByThread(event.threadId);
     if (!bot && !group)
         return;
     const speaker = group ? groupSpeakers.get(event.threadId) : undefined;
+    broadcast({ kind: "runtime", event, botId: bot?.id ?? speaker?.botId });
     const pushMessage = (m) => {
         const message = store.appendMessage(event.threadId, group && m.role === "bot" ? { ...m, from: speaker } : m);
         broadcast({ kind: "message", threadId: event.threadId, message });
@@ -286,7 +297,10 @@ function userDataRoot() {
 // Electron may restart or permissions may change.
 function readCuaConnection() {
     // new name first; pre-rename desktop builds used the old directory
-    for (const dir of ["OpenMausBot", "openmausbot", "OpenGrokBot", "opengrokbot"]) {
+    for (const dir of [
+        "Gerer Build Studio",
+        "gerer-build-studio",
+    ]) {
         try {
             const p = join(userDataRoot(), dir, "cua-connection.json");
             const conn = JSON.parse(readFileSync(p, "utf8"));
@@ -299,6 +313,63 @@ function readCuaConnection() {
         }
     }
     return null;
+}
+function formatBytes(bytes) {
+    if (bytes < 1024)
+        return `${bytes} B`;
+    if (bytes < 1024 * 1024)
+        return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+function saveAttachmentsToWorkspace(threadId, attachments) {
+    if (!attachments || !Array.isArray(attachments) || attachments.length === 0)
+        return undefined;
+    const tag = threadId.replace(/[^\w-]/g, "");
+    const workspaceAttachmentsDir = join(DATA_DIR, "workspaces", tag, "attachments");
+    try {
+        mkdirSync(workspaceAttachmentsDir, { recursive: true });
+    }
+    catch { }
+    return attachments.map((att) => {
+        const rawName = typeof att.name === "string" ? att.name : "attachment";
+        const base = basename(rawName).replace(/[^\w.-]/g, "_") || "attachment";
+        const filename = `${(att.id || "att").slice(0, 8)}_${base}`;
+        const filePath = join(workspaceAttachmentsDir, filename);
+        if (att.dataUrl && typeof att.dataUrl === "string") {
+            try {
+                const commaIdx = att.dataUrl.indexOf(",");
+                if (commaIdx !== -1) {
+                    const base64Data = att.dataUrl.slice(commaIdx + 1);
+                    const buffer = Buffer.from(base64Data, "base64");
+                    writeFileSync(filePath, buffer);
+                    return { ...att, path: filePath };
+                }
+            }
+            catch (err) {
+                console.error(`Failed to save attachment ${att.name} to ${filePath}:`, err);
+            }
+        }
+        return { ...att, path: filePath };
+    });
+}
+function formatAttachmentContext(attachments) {
+    if (!attachments || attachments.length === 0)
+        return "";
+    const lines = ["[Attached files:]"];
+    for (const att of attachments) {
+        let line = `- ${att.name} (${att.mimeType || "application/octet-stream"}, ${formatBytes(att.size || 0)})`;
+        if (att.path) {
+            line += ` [Workspace path: ${att.path}]`;
+        }
+        lines.push(line);
+        if (att.textContent && att.textContent.length < 50000) {
+            const ext = att.name.includes(".") ? att.name.split(".").pop() : "";
+            lines.push("```" + (ext || ""));
+            lines.push(att.textContent);
+            lines.push("```");
+        }
+    }
+    return lines.join("\n");
 }
 // ── turn dispatch (upstream ProviderCommandReactor, miniature) ──────────
 async function startTurn(botId, text, opts) {
@@ -315,16 +386,20 @@ async function startTurn(botId, text, opts) {
     // an edit hands us its already-branched user message; a plain send appends
     let userMessage = opts?.userMessage;
     if (!userMessage) {
-        userMessage = store.appendMessage(bot.threadId, { role: "user", kind: "text", text });
+        const savedAttachments = saveAttachmentsToWorkspace(bot.threadId, opts?.attachments);
+        userMessage = store.appendMessage(bot.threadId, { role: "user", kind: "text", text, attachments: savedAttachments });
         broadcast({ kind: "message", threadId: bot.threadId, message: userMessage });
     }
     // transcript for API-backed drivers: settled text turns on the ACTIVE
     // branch only — abandoned forks never reach the model
     const transcript = store
         .activePath(bot.threadId)
-        .filter((m) => m.kind === "text" && m.text && m.id !== userMessage.id)
+        .filter((m) => m.kind === "text" && (m.text || (m.attachments && m.attachments.length > 0)) && m.id !== userMessage.id)
         .slice(-40)
-        .map((m) => ({ role: m.role === "user" ? "user" : "assistant", text: m.text }));
+        .map((m) => {
+        const attSummary = m.attachments?.length ? ` [Attached: ${m.attachments.map((a) => a.name).join(", ")}]` : "";
+        return { role: m.role === "user" ? "user" : "assistant", text: `${m.text || ""}${attSummary}`.trim() };
+    });
     // After a rewind (edit / branch switch) the provider's native session
     // still contains the abandoned branch: start a fresh session instead of
     // resuming, and for cursor-resuming drivers replay the surviving path
@@ -332,6 +407,8 @@ async function startTurn(botId, text, opts) {
     // cleared only once the turn is actually dispatched — clearing it here
     // would cost the next attempt its history if this dispatch fails.
     const rewound = Boolean(bot.rewound);
+    const attPrompt = formatAttachmentContext(userMessage.attachments);
+    const promptBody = [text, attPrompt].filter(Boolean).join("\n\n");
     const turnText = rewound && instance.driverKind !== "grok" && transcript.length
         ? [
             "[The user rewound this conversation (edited a message or switched to another version). Everything before this point was replaced by the following history:]",
@@ -340,16 +417,17 @@ async function startTurn(botId, text, opts) {
             "",
             "[Now reply to the user's latest message:]",
             "",
-            text,
+            promptBody,
         ].join("\n")
-        : text;
+        : promptBody;
     const persona = [
-        `You are ${bot.name}, a personal bot in OpenMausBot.`,
+        `You are ${bot.name}, a personal bot in Gerer Build Studio.`,
         bot.title && `Role: ${bot.title}.`,
         bot.description && `About: ${bot.description}`,
     ]
         .filter(Boolean)
         .join(" ");
+    const projectContext = resolveProjectContext([text, bot.description]);
     // busy flips immediately so the composer locks; the dispatch itself runs
     // in the background — box provisioning can take ~90s and must never
     // hang the HTTP request
@@ -387,38 +465,40 @@ async function startTurn(botId, text, opts) {
             // integrations.agents gate below, the prompt hint) — a bot on a driver
             // without it must not be told about tools it cannot call. Any bot can
             // still be the TARGET of ask_bot regardless of its driver.
-            if (commsDepth < MAX_COMMS_DEPTH &&
-                instance.adapter.capabilities.agentsMcp === true &&
-                store.bots.filter((b) => b.id !== bot.id && !b.hidden).length > 0) {
+            const canMessagePeers = commsDepth < MAX_COMMS_DEPTH && store.bots.some((candidate) => candidate.id !== bot.id && !candidate.hidden);
+            if (commsDepth < MAX_COMMS_DEPTH && instance.adapter.capabilities.agentsMcp === true) {
                 integrations.agents = agentsIntegration(bot.id, commsDepth);
             }
             // @mentions in the user's message (the composer's tagging UI) become
             // an explicit delegation nudge — the agent still does the ask_bot call
             // itself, so the harness stays the single owner of turns/permissions
-            const tagged = integrations.agents
+            const tagged = integrations.agents && canMessagePeers
                 ? mentionedBots(text, store.bots.filter((b) => b.id !== bot.id))
                 : [];
             await instance.adapter.sendTurn({
                 threadId: bot.threadId,
                 text: turnText,
+                attachments: userMessage.attachments,
                 model: bot.modelSelection.model,
                 // a rewound thread never resumes the abandoned branch's session
                 resumeCursor: rewound ? undefined : bot.resumeCursors[bot.modelSelection.instanceId],
                 transcript,
                 system: persona +
+                    (projectContext.system ? `\n\n${projectContext.system}` : "") +
                     (integrations.computer && instance.driverKind !== "boxAgent"
                         ? " You have your own cloud computer — use the computer tools (screenshot, computer_exec, open_url) whenever browsing or acting on a desktop helps."
                         : integrations.localComputer
                             ? " You can act on the user's computer through the computer tools — take a screenshot or read the desktop state first, prefer accessibility actions over raw coordinates, and act carefully."
                             : "") +
                     (integrations.agents
-                        ? " You can work with the user's other bots through the agents tools — list_bots shows who's available, ask_bot sends one of them a message and returns their reply."
+                        ? ` You can use the shared task board through list_tasks, create_task, claim_task, update_task, and delegate_task. Always use these tools for task changes; never read, edit, or replace tasks.json directly. Claim a suitable unassigned task before starting it, keep its status current, and move completed work to review so the user can verify it.${canMessagePeers ? " You can also work with the user's other bots — list_bots shows who's available, and ask_bot sends one of them a message and returns their reply." : ""}`
                         : "") +
                     (tagged.length
                         ? ` The user tagged ${tagged
                             .map((t) => `@${t.name} (ask_bot bot_id ${t.id})`)
                             .join(" and ")} in their message — bring them in with ask_bot and fold their reply into your answer.`
                         : ""),
+                cwd: projectContext.cwd,
                 integrations,
             });
             // dispatched: the rewind is spent, and the old cursors are dead
@@ -448,14 +528,54 @@ async function startTurn(botId, text, opts) {
 // room conversation serialized into its prompt. A member's reply may
 // @mention teammates; those get one chained turn (hop 1), never deeper.
 const groupQueues = new Map();
+const groupQueueEpoch = new Map();
+const GROUP_TURN_TIMEOUT_MS = Math.max(1_000, Number(process.env.GBS_GROUP_TURN_TIMEOUT_MS) || 5 * 60_000);
 const GROUP_CONTEXT_MESSAGES = 30;
 const MAX_GROUP_HOPS = 1;
+function queueGroupResponders(groupId, botIds) {
+    if (botIds.length === 0)
+        return;
+    const group = store.group(groupId);
+    if (!group)
+        return;
+    store.patchGroup(groupId, { queuedBotIds: [...(group.queuedBotIds ?? []), ...botIds] });
+    broadcastGroup(groupId);
+}
+function startQueuedResponder(groupId, botId) {
+    const group = store.group(groupId);
+    if (!group)
+        return;
+    const queuedBotIds = [...(group.queuedBotIds ?? [])];
+    const index = queuedBotIds.indexOf(botId);
+    if (index >= 0)
+        queuedBotIds.splice(index, 1);
+    store.patchGroup(groupId, { busyBotId: botId, queuedBotIds });
+    broadcastGroup(groupId);
+}
+function dropQueuedResponder(groupId, botId) {
+    const group = store.group(groupId);
+    if (!group)
+        return;
+    const queuedBotIds = [...(group.queuedBotIds ?? [])];
+    const index = queuedBotIds.indexOf(botId);
+    if (index < 0)
+        return;
+    queuedBotIds.splice(index, 1);
+    store.patchGroup(groupId, { queuedBotIds });
+    broadcastGroup(groupId);
+}
 function serializeRoomContext(threadId, userName) {
     return store
         .messagesFor(threadId)
-        .filter((m) => m.kind === "text" && m.text)
+        .filter((m) => m.kind === "text" && (m.text || (m.attachments && m.attachments.length > 0)))
         .slice(-GROUP_CONTEXT_MESSAGES)
-        .map((m) => `${m.role === "user" ? userName : (m.from?.name ?? "Bot")}: ${m.text}`)
+        .map((m) => {
+        const author = m.role === "user" ? userName : (m.from?.name ?? "Bot");
+        const attSummary = m.attachments?.length
+            ? ` [Attached: ${m.attachments.map((a) => a.name).join(", ")}]`
+            : "";
+        return `${author}: ${m.text || ""}${attSummary}`.trim();
+    })
         .join("\n");
 }
 function broadcastGroup(groupId) {
@@ -466,11 +586,15 @@ function broadcastGroup(groupId) {
 async function runGroupMemberTurn(groupId, botId, hop, 
 // bots that already spoke for this user message — "@Scout ask @Pixel"
 // must not run Pixel twice (once chained, once as a direct responder)
-spoken = new Set()) {
+spoken = new Set(), epoch = groupQueueEpoch.get(groupId) ?? 0) {
     const group = store.group(groupId);
     const bot = store.bot(botId);
-    if (!group || !bot)
+    if (!group)
         return;
+    if (!bot) {
+        dropQueuedResponder(groupId, botId);
+        return;
+    }
     spoken.add(botId);
     const instance = registry.get(bot.modelSelection.instanceId);
     const userName = cfg.profile?.name?.trim() || "User";
@@ -484,35 +608,45 @@ spoken = new Set()) {
         broadcast({ kind: "message", threadId: group.threadId, message: failure });
         return;
     }
-    store.patchGroup(group.id, { busyBotId: bot.id });
-    broadcastGroup(group.id);
+    startQueuedResponder(group.id, bot.id);
     groupSpeakers.set(group.threadId, { botId: bot.id, name: bot.name, color: bot.color });
     const roster = group.memberIds
         .map((id) => store.bot(id))
         .filter((b) => Boolean(b))
         .map((b) => `@${b.name}${b.title ? ` (${b.title})` : ""}`)
         .join(", ");
+    const latestUserMessage = [...store.messagesFor(group.threadId)]
+        .reverse()
+        .find((message) => message.role === "user" && message.kind === "text");
+    const latestUserText = latestUserMessage?.text ?? "";
+    const attPrompt = formatAttachmentContext(latestUserMessage?.attachments);
+    const projectContext = resolveProjectContext([latestUserText, group.bulletin, bot.description]);
     const system = [
-        `You are ${bot.name}, a bot in the room "${group.name}" in OpenMausBot.`,
+        `You are ${bot.name}, a bot in the room "${group.name}" in Gerer Build Studio.`,
         bot.title && `Role: ${bot.title}.`,
         bot.description && `About: ${bot.description}`,
         `Room members: ${roster}, and ${userName} (the human).`,
         group.bulletin.trim() && `Room bulletin (shared instructions for everyone):\n${group.bulletin.trim()}`,
+        projectContext.system,
         `Reply as yourself, briefly and conversationally. To bring a teammate in, mention them like @Name — they'll see the conversation and respond.`,
     ]
         .filter(Boolean)
         .join("\n");
-    const text = `${serializeRoomContext(group.threadId, userName)}\n\n(Reply to the conversation above as ${bot.name}.)`;
+    const text = `${serializeRoomContext(group.threadId, userName)}${attPrompt ? `\n\n${attPrompt}` : ""}\n\n(Reply to the conversation above as ${bot.name}.)`;
     // run the turn and wait for it to settle, folding the reply text so a
     // chained @mention can be routed afterwards
     let replyText = "";
+    let timedOut = false;
     await new Promise((resolve) => {
         let done = false;
+        let interruptFallback;
         const finish = () => {
             if (done)
                 return;
             done = true;
             clearTimeout(timer);
+            if (interruptFallback)
+                clearTimeout(interruptFallback);
             unsub();
             resolve();
         };
@@ -524,9 +658,16 @@ spoken = new Set()) {
             else if (e.type === "turn.completed")
                 finish();
         });
-        const timer = setTimeout(finish, 5 * 60_000);
+        const timer = setTimeout(() => {
+            timedOut = true;
+            void instance.adapter.interruptTurn(group.threadId)
+                .catch(() => { })
+                .finally(() => {
+                interruptFallback = setTimeout(finish, 6_000);
+            });
+        }, GROUP_TURN_TIMEOUT_MS);
         instance.adapter
-            .sendTurn({ threadId: group.threadId, text, system })
+            .sendTurn({ threadId: group.threadId, text, system, cwd: projectContext.cwd })
             .catch((err) => {
             const failure = store.appendMessage(group.threadId, {
                 role: "bot",
@@ -538,26 +679,38 @@ spoken = new Set()) {
             finish();
         });
     });
+    if (timedOut) {
+        const failure = store.appendMessage(group.threadId, {
+            role: "bot",
+            kind: "activity",
+            from: { botId: bot.id, name: bot.name, color: bot.color },
+            tool: { name: "error: activity timed out and was stopped", ok: false },
+        });
+        broadcast({ kind: "message", threadId: group.threadId, message: failure });
+    }
     groupSpeakers.delete(group.threadId);
     store.patchGroup(group.id, { busyBotId: null, unread: true });
     broadcastGroup(group.id);
     // chained mentions: a member's reply can summon teammates — one hop only
-    if (hop < MAX_GROUP_HOPS && replyText.trim()) {
+    const latestGroup = store.group(groupId);
+    if (hop < MAX_GROUP_HOPS && replyText.trim() && latestGroup && (groupQueueEpoch.get(groupId) ?? 0) === epoch) {
         const members = group.memberIds
             .map((id) => store.bot(id))
             .filter((b) => Boolean(b) && b.id !== bot.id);
-        for (const next of mentionedBots(replyText, members)) {
+        for (const next of automaticHandoffBots(latestGroup.autoHandoffs, replyText, members)) {
             if (spoken.has(next.id))
                 continue;
-            await runGroupMemberTurn(groupId, next.id, hop + 1, spoken);
+            queueGroupResponders(groupId, [next.id]);
+            await runGroupMemberTurn(groupId, next.id, hop + 1, spoken, epoch);
         }
     }
 }
-function startGroupTurn(groupId, text) {
+function startGroupTurn(groupId, text, attachments) {
     const group = store.group(groupId);
     if (!group)
         throw Object.assign(new Error("no such group"), { status: 404 });
-    const userMessage = store.appendMessage(group.threadId, { role: "user", kind: "text", text });
+    const savedAttachments = saveAttachmentsToWorkspace(group.threadId, attachments);
+    const userMessage = store.appendMessage(group.threadId, { role: "user", kind: "text", text, attachments: savedAttachments });
     broadcast({ kind: "message", threadId: group.threadId, message: userMessage });
     const members = group.memberIds
         .map((id) => store.bot(id))
@@ -576,13 +729,21 @@ function startGroupTurn(groupId, text) {
     }
     if (!responders.length)
         return;
+    const scheduled = responders.filter((responder, index) => responders.findIndex((item) => item.id === responder.id) === index);
+    const epoch = groupQueueEpoch.get(groupId) ?? 0;
+    queueGroupResponders(groupId, scheduled.map((responder) => responder.id));
     const prev = groupQueues.get(groupId) ?? Promise.resolve();
     const next = prev.then(async () => {
         const spoken = new Set();
-        for (const responder of responders) {
+        for (const responder of scheduled) {
+            if ((groupQueueEpoch.get(groupId) ?? 0) !== epoch)
+                break;
             if (spoken.has(responder.id))
                 continue;
-            await runGroupMemberTurn(groupId, responder.id, 0, spoken);
+            const latest = store.group(groupId);
+            if (!latest?.queuedBotIds?.includes(responder.id))
+                continue;
+            await runGroupMemberTurn(groupId, responder.id, 0, spoken, epoch);
         }
     });
     groupQueues.set(groupId, next.catch(() => { }));
@@ -594,6 +755,67 @@ function configStatus() {
         box: { configured: Boolean(cfg.box?.token) },
         // not a secret — the sidebar shows it
         profile: { name: cfg.profile?.name ?? "", email: cfg.profile?.email ?? "" },
+    };
+}
+function taskActorForBot(botId) {
+    const bot = store.bot(botId);
+    return bot ? { kind: "bot", botId: bot.id, name: bot.name } : null;
+}
+function taskFilters(url) {
+    const value = (name) => url.searchParams.get(name) || undefined;
+    const nullable = (name) => {
+        const current = url.searchParams.get(name);
+        return current === "unassigned" || current === "none" ? null : current || undefined;
+    };
+    return {
+        text: value("text"),
+        projectId: nullable("projectId"),
+        assigneeBotId: nullable("assigneeBotId"),
+        status: value("status"),
+        type: value("type"),
+        priority: value("priority"),
+        tag: value("tag"),
+        overdue: url.searchParams.has("overdue") ? url.searchParams.get("overdue") === "true" : undefined,
+    };
+}
+function validateTaskReferences(input, agentsOnly = false) {
+    if (input.projectId) {
+        const project = readRegisteredProjects().find((candidate) => candidate.id === input.projectId);
+        if (!project)
+            return "no such project";
+    }
+    if (input.assigneeBotId) {
+        const bot = store.bot(input.assigneeBotId);
+        if (!bot || (agentsOnly && bot.hidden))
+            return "no such agent";
+    }
+    return null;
+}
+function taskView(task, includeProjectPath = false) {
+    const project = task.projectId
+        ? readRegisteredProjects().find((candidate) => candidate.id === task.projectId)
+        : undefined;
+    const assignee = task.assigneeBotId ? store.bot(task.assigneeBotId) : undefined;
+    return {
+        ...task,
+        project: task.projectId
+            ? {
+                id: task.projectId,
+                name: project?.name ?? "Unavailable project",
+                mention: project?.mention ?? task.projectId,
+                available: Boolean(project?.available),
+                ...(includeProjectPath && project?.available ? { path: project.path } : {}),
+            }
+            : null,
+        assignee: task.assigneeBotId
+            ? { id: task.assigneeBotId, name: assignee?.name ?? "Unavailable agent", available: Boolean(assignee && !assignee.hidden) }
+            : null,
+    };
+}
+function taskBoardPayload() {
+    return {
+        tasks: taskStore.list().map((task) => taskView(task)),
+        projects: readRegisteredProjects().map(({ id, name, mention, available }) => ({ id, name, mention, available })),
     };
 }
 /** Rebuild the provider fleet after a config change so new keys take
@@ -657,6 +879,58 @@ const server = createServer(async (req, res) => {
                 }));
                 return json(res, 200, { bots });
             }
+            const callerId = String(req.headers["x-gbs-bot-id"] ?? req.headers["x-omb-bot-id"] ?? "");
+            const caller = taskActorForBot(callerId);
+            if (method === "GET" && path === "/api/internal/tasks") {
+                if (!caller)
+                    return json(res, 401, { error: "unknown calling agent" });
+                return json(res, 200, { tasks: taskStore.list(taskFilters(url)).map((task) => taskView(task, true)) });
+            }
+            if (method === "POST" && path === "/api/internal/tasks") {
+                if (!caller)
+                    return json(res, 401, { error: "unknown calling agent" });
+                const body = await readBody(req);
+                const referenceError = validateTaskReferences(body, true);
+                if (referenceError)
+                    return json(res, 404, { error: referenceError });
+                const task = taskStore.create(body, caller);
+                broadcast({ kind: "task.created", task: taskView(task) });
+                return json(res, 201, { task: taskView(task, true) });
+            }
+            let taskMatch = path.match(/^\/api\/internal\/tasks\/([\w-]+)$/);
+            if (taskMatch && method === "PATCH") {
+                if (!caller)
+                    return json(res, 401, { error: "unknown calling agent" });
+                const body = await readBody(req);
+                const patch = (body.patch ?? {});
+                const referenceError = validateTaskReferences(patch, true);
+                if (referenceError)
+                    return json(res, 404, { error: referenceError });
+                const task = taskStore.update(taskMatch[1], Number(body.revision), patch, caller);
+                broadcast({ kind: "task.updated", task: taskView(task) });
+                return json(res, 200, { task: taskView(task, true) });
+            }
+            taskMatch = path.match(/^\/api\/internal\/tasks\/([\w-]+)\/claim$/);
+            if (taskMatch && method === "POST") {
+                if (!caller)
+                    return json(res, 401, { error: "unknown calling agent" });
+                const body = await readBody(req);
+                const task = taskStore.claim(taskMatch[1], Number(body.revision), caller);
+                broadcast({ kind: "task.updated", task: taskView(task) });
+                return json(res, 200, { task: taskView(task, true) });
+            }
+            taskMatch = path.match(/^\/api\/internal\/tasks\/([\w-]+)\/delegate$/);
+            if (taskMatch && method === "POST") {
+                if (!caller)
+                    return json(res, 401, { error: "unknown calling agent" });
+                const body = await readBody(req);
+                const target = store.bot(String(body.botId ?? ""));
+                if (!target || target.hidden)
+                    return json(res, 404, { error: "no such agent" });
+                const task = taskStore.delegate(taskMatch[1], Number(body.revision), target.id, target.name, caller);
+                broadcast({ kind: "task.updated", task: taskView(task) });
+                return json(res, 200, { task: taskView(task, true) });
+            }
             if (method === "POST" && path === "/api/internal/ask-bot") {
                 const body = await readBody(req);
                 const fromBotId = String(body.fromBotId ?? "");
@@ -716,7 +990,7 @@ const server = createServer(async (req, res) => {
                         broadcastGroup(channel.id);
                     }
                 }
-                const prefixed = `[Message from @${fromName}, another bot in this OpenMausBot workspace. Reply to them.]\n\n${message}`;
+                const prefixed = `[Message from @${fromName}, another bot in this Gerer Build Studio workspace. Reply to them.]\n\n${message}`;
                 const reply = await askBotAndWait(toBotId, prefixed, depth);
                 if (from) {
                     mirror(target, reply);
@@ -749,6 +1023,47 @@ const server = createServer(async (req, res) => {
                 sseClients.delete(res);
             });
             return;
+        }
+        // ── shared task board ─────────────────────────────────────────────
+        if (method === "GET" && path === "/api/tasks") {
+            return json(res, 200, taskBoardPayload());
+        }
+        if (method === "POST" && path === "/api/tasks") {
+            const body = await readBody(req);
+            const referenceError = validateTaskReferences(body);
+            if (referenceError)
+                return json(res, 404, { error: referenceError });
+            const task = taskStore.create(body, { kind: "user" });
+            broadcast({ kind: "task.created", task: taskView(task) });
+            return json(res, 201, { task: taskView(task) });
+        }
+        let taskMatch = path.match(/^\/api\/tasks\/([\w-]+)$/);
+        if (taskMatch && method === "PATCH") {
+            const body = await readBody(req);
+            const patch = (body.patch ?? {});
+            const referenceError = validateTaskReferences(patch);
+            if (referenceError)
+                return json(res, 404, { error: referenceError });
+            const task = taskStore.update(taskMatch[1], Number(body.revision), patch, { kind: "user" });
+            broadcast({ kind: "task.updated", task: taskView(task) });
+            return json(res, 200, { task: taskView(task) });
+        }
+        taskMatch = path.match(/^\/api\/tasks\/([\w-]+)\/delegate$/);
+        if (taskMatch && method === "POST") {
+            const body = await readBody(req);
+            const target = store.bot(String(body.botId ?? ""));
+            if (!target)
+                return json(res, 404, { error: "no such agent" });
+            const task = taskStore.delegate(taskMatch[1], Number(body.revision), target.id, target.name, { kind: "user" });
+            broadcast({ kind: "task.updated", task: taskView(task) });
+            return json(res, 200, { task: taskView(task) });
+        }
+        taskMatch = path.match(/^\/api\/tasks\/([\w-]+)$/);
+        if (taskMatch && method === "DELETE") {
+            const body = await readBody(req);
+            const task = taskStore.delete(taskMatch[1], Number(body.revision));
+            broadcast({ kind: "task.deleted", taskId: task.id });
+            return json(res, 200, { ok: true });
         }
         // ── bots ──
         if (method === "GET" && path === "/api/bots") {
@@ -783,6 +1098,11 @@ const server = createServer(async (req, res) => {
                 if (body[key] !== undefined)
                     patch[key] = body[key];
             }
+            if (body.autoHandoffs !== undefined) {
+                if (typeof body.autoHandoffs !== "boolean")
+                    return json(res, 400, { error: "autoHandoffs must be a boolean" });
+                patch.autoHandoffs = body.autoHandoffs;
+            }
             if (Array.isArray(body.memberIds)) {
                 const ids = body.memberIds.filter((id) => typeof id === "string" && Boolean(store.bot(id)));
                 if (ids.length)
@@ -800,12 +1120,7 @@ const server = createServer(async (req, res) => {
             if (!group)
                 return json(res, 404, { error: "no such room" });
             store.deleteGroup(group.id);
-            for (const dir of [EVENTS_DIR, NATIVE_DIR]) {
-                try {
-                    unlinkSync(join(dir, `${group.threadId}.ndjson`));
-                }
-                catch { }
-            }
+            deleteThreadLogs(group.threadId);
             broadcast({ kind: "group.deleted", groupId: group.id });
             return json(res, 200, { ok: true });
         }
@@ -813,9 +1128,11 @@ const server = createServer(async (req, res) => {
         if (m && method === "POST") {
             const body = await readBody(req);
             const text = String(body.text ?? "").trim();
-            if (!text)
-                return json(res, 400, { error: "text required" });
-            startGroupTurn(m[1], text);
+            const attachments = Array.isArray(body.attachments) ? body.attachments : undefined;
+            if (!text && (!attachments || attachments.length === 0)) {
+                return json(res, 400, { error: "text or attachment required" });
+            }
+            startGroupTurn(m[1], text, attachments);
             return json(res, 202, { ok: true });
         }
         m = path.match(/^\/api\/groups\/([\w-]+)\/interrupt$/);
@@ -825,7 +1142,46 @@ const server = createServer(async (req, res) => {
                 return json(res, 404, { error: "no such room" });
             const busy = group.busyBotId ? store.bot(group.busyBotId) : undefined;
             const instance = busy ? registry.get(busy.modelSelection.instanceId) : undefined;
+            groupQueueEpoch.set(group.id, (groupQueueEpoch.get(group.id) ?? 0) + 1);
+            store.patchGroup(group.id, { queuedBotIds: [] });
+            broadcastGroup(group.id);
             await instance?.adapter.interruptTurn(group.threadId).catch(() => { });
+            return json(res, 200, { ok: true });
+        }
+        m = path.match(/^\/api\/groups\/([\w-]+)\/activities\/([\w-]+)\/stop$/);
+        if (m && method === "POST") {
+            const group = store.group(m[1]);
+            const bot = store.bot(m[2]);
+            if (!group || !bot || !group.memberIds.includes(bot.id))
+                return json(res, 404, { error: "no such room activity" });
+            if (group.queuedBotIds?.includes(bot.id)) {
+                dropQueuedResponder(group.id, bot.id);
+                return json(res, 200, { ok: true });
+            }
+            if (group.busyBotId && group.busyBotId !== bot.id) {
+                return json(res, 409, { error: "another agent owns the active room turn" });
+            }
+            const instance = registry.get(bot.modelSelection.instanceId);
+            if (!instance)
+                return json(res, 409, { error: "provider unavailable" });
+            await instance.adapter.interruptTurn(group.threadId).catch(() => { });
+            return json(res, 200, { ok: true });
+        }
+        // Erase one transcript without deleting its bot or room. The idle guard
+        // prevents a late runtime event from repopulating history after clearing.
+        m = path.match(/^\/api\/threads\/([\w-]+)\/messages$/);
+        if (m && method === "DELETE") {
+            const threadId = m[1];
+            const bot = store.botByThread(threadId);
+            const group = bot ? undefined : store.groupByThread(threadId);
+            if (!bot && !group)
+                return json(res, 404, { error: "no such conversation" });
+            if (bot?.busy || group?.busyBotId || (group?.queuedBotIds?.length ?? 0) > 0) {
+                return json(res, 409, { error: "Wait for the conversation to finish before clearing it." });
+            }
+            store.clearThread(threadId);
+            deleteThreadLogs(threadId);
+            broadcast({ kind: "thread.cleared", threadId });
             return json(res, 200, { ok: true });
         }
         // emoji reactions — works on any thread (1:1 or room)
@@ -875,12 +1231,7 @@ const server = createServer(async (req, res) => {
             await registry.get(bot.modelSelection.instanceId)?.adapter.interruptTurn(bot.threadId).catch(() => { });
             stopScreenPoller(bot.id);
             store.deleteBot(bot.id);
-            for (const dir of [EVENTS_DIR, NATIVE_DIR]) {
-                try {
-                    unlinkSync(join(dir, `${bot.threadId}.ndjson`));
-                }
-                catch { }
-            }
+            deleteThreadLogs(bot.threadId);
             broadcast({ kind: "bot.deleted", botId: bot.id });
             return json(res, 200, { ok: true });
         }
@@ -908,9 +1259,11 @@ const server = createServer(async (req, res) => {
         if (m && method === "POST") {
             const body = await readBody(req);
             const text = String(body.text ?? "").trim();
-            if (!text)
-                return json(res, 400, { error: "text required" });
-            await startTurn(m[1], text);
+            const attachments = Array.isArray(body.attachments) ? body.attachments : undefined;
+            if (!text && (!attachments || attachments.length === 0)) {
+                return json(res, 400, { error: "text or attachment required" });
+            }
+            await startTurn(m[1], text, { attachments });
             return json(res, 202, { ok: true });
         }
         // edit a user message → fork the conversation there and rerun the turn.
@@ -925,8 +1278,10 @@ const server = createServer(async (req, res) => {
                 return json(res, 404, { error: "no such bot" });
             const body = await readBody(req);
             const text = String(body.text ?? "").trim();
-            if (!text)
-                return json(res, 400, { error: "text required" });
+            const attachments = Array.isArray(body.attachments) ? body.attachments : undefined;
+            if (!text && (!attachments || attachments.length === 0)) {
+                return json(res, 400, { error: "text or attachment required" });
+            }
             // everything from here down is synchronous, so two racing edits can
             // never both get past this check: startTurn flips busy before the
             // next request is handled
@@ -941,7 +1296,8 @@ const server = createServer(async (req, res) => {
                     error: `provider instance "${bot.modelSelection.instanceId}" is unavailable — pick another model in settings`,
                 });
             }
-            const message = store.branchMessage(bot.threadId, messageId, text);
+            const savedAttachments = saveAttachmentsToWorkspace(bot.threadId, attachments ?? source.attachments);
+            const message = store.branchMessage(bot.threadId, messageId, text, savedAttachments);
             if (!message)
                 return json(res, 404, { error: "no such message" });
             store.patchBot(bot.id, { rewound: true });
@@ -976,7 +1332,14 @@ const server = createServer(async (req, res) => {
             const instance = registry.get(bot.modelSelection.instanceId);
             if (!instance)
                 return json(res, 409, { error: "provider unavailable" });
-            await instance.adapter.respondToRequest(bot.threadId, String(body.requestId), {
+            const requestedThreadId = typeof body.threadId === "string" && body.threadId ? body.threadId : bot.threadId;
+            if (requestedThreadId !== bot.threadId) {
+                const group = store.groupByThread(requestedThreadId);
+                if (!group || !group.memberIds.includes(bot.id) || groupSpeakers.get(requestedThreadId)?.botId !== bot.id) {
+                    return json(res, 403, { error: "agent is not awaiting input in that room" });
+                }
+            }
+            await instance.adapter.respondToRequest(requestedThreadId, String(body.requestId), {
                 behavior: body.behavior,
                 message: body.message,
             });
@@ -995,7 +1358,7 @@ const server = createServer(async (req, res) => {
         // child proves it is OURS by echoing its pid (a stray dev server has
         // the same API shape but a different pid)
         if (method === "GET" && path === "/api/health") {
-            return json(res, 200, { app: "openmausbot", pid: process.pid, static: Boolean(STATIC_DIR) });
+            return json(res, 200, { app: "gerer-build-studio", pid: process.pid, static: Boolean(STATIC_DIR) });
         }
         // ── provider instances (model picker) ──
         if (method === "GET" && path === "/api/instances") {
@@ -1068,7 +1431,7 @@ const server = createServer(async (req, res) => {
             }
         }
         // packaged app: the server serves the built UI too (window → :8799 for
-        // everything, no dev proxy to die). OMB_STATIC_DIR is set by Electron.
+        // everything, no dev proxy to die). GBS_STATIC_DIR is set by Electron.
         if (method === "GET" && !path.startsWith("/api/") && STATIC_DIR) {
             const safe = path === "/" ? "/index.html" : path.replace(/\.\./g, "");
             const file = join(STATIC_DIR, safe);
@@ -1093,11 +1456,14 @@ const server = createServer(async (req, res) => {
     }
     catch (e) {
         const status = e?.status ?? 500;
-        return json(res, status, { error: e instanceof Error ? e.message : String(e) });
+        return json(res, status, {
+            error: e instanceof Error ? e.message : String(e),
+            ...(e instanceof TaskConflictError ? { latest: taskView(e.latest) } : {}),
+        });
     }
 });
 server.listen(PORT, "127.0.0.1", () => {
-    console.log(`openmausbot server on http://127.0.0.1:${PORT}`);
+    console.log(`gerer-build-studio server on http://127.0.0.1:${PORT}`);
 });
 for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {

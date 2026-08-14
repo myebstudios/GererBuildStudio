@@ -12,6 +12,32 @@ const serverScript = path.join(rootDir, "server", "index.ts");
 const VITE_PORT = 5199;
 const SERVER_PORT = Number(process.env.GBS_PORT) || 8799;
 
+function checkHarness(port, timeoutMs = 600) {
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:${port}/api/health`, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        return resolve(false);
+      }
+      let raw = "";
+      res.on("data", (chunk) => (raw += chunk));
+      res.on("end", () => {
+        try {
+          const body = JSON.parse(raw);
+          resolve(body?.app === "gerer-build-studio");
+        } catch {
+          resolve(false);
+        }
+      });
+    });
+    req.on("error", () => resolve(false));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
 function checkUrl(url, timeoutMs = 600) {
   return new Promise((resolve) => {
     const req = http.get(url, (res) => {
@@ -61,7 +87,7 @@ process.on("SIGTERM", () => {
 });
 
 async function main() {
-  const isServerUp = await checkUrl(`http://127.0.0.1:${SERVER_PORT}/api/health`);
+  const isServerUp = await checkHarness(SERVER_PORT);
   if (!isServerUp) {
     console.log(`[dev:desktop] Starting harness server on port ${SERVER_PORT}...`);
     const serverProc = spawn(process.execPath, ["--experimental-strip-types", serverScript], {

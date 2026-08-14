@@ -34,14 +34,20 @@ export function mentionedBots(text, peers) {
     const found = [];
     let at = -1;
     while ((at = lower.indexOf("@", at + 1)) !== -1) {
-        if (at > 0 && !/\s/.test(text[at - 1]))
-            continue; // user@host, not a tag
+        if (at > 0 && !/[\s*_~([>{]/.test(text[at - 1]))
+            continue; // user@host and mid-word @ are not tags
         const rest = lower.slice(at + 1);
         const hit = candidates.find((p) => rest.startsWith(p.name.toLowerCase()));
         if (hit && !found.includes(hit))
             found.push(hit);
     }
     return found;
+}
+export function automaticHandoffBots(enabled, text, peers) {
+    if (!enabled)
+        return [];
+    const textWithoutCode = text.replace(/```[\s\S]*?```/g, "").replace(/`[^`]+`/g, "");
+    return mentionedBots(textWithoutCode, peers);
 }
 const onboardingCard = () => ({
     title: "What do you mostly want help with?",
@@ -71,14 +77,17 @@ export class Store {
         // busy never survives a restart — no turn does either
         for (const b of this.bots)
             b.busy = false;
-        for (const g of this.groups)
+        for (const g of this.groups) {
+            g.autoHandoffs = g.autoHandoffs === true;
             g.busyBotId = null;
+            g.queuedBotIds = [];
+        }
     }
     saveBots() {
         writeFileSync(BOTS_FILE, JSON.stringify(this.bots, null, 2));
     }
     saveGroups() {
-        writeFileSync(GROUPS_FILE, JSON.stringify(this.groups.map(({ busyBotId, ...g }) => g), null, 2));
+        writeFileSync(GROUPS_FILE, JSON.stringify(this.groups.map(({ busyBotId, queuedBotIds, ...g }) => g), null, 2));
     }
     // ── groups ────────────────────────────────────────────────────────────
     group(id) {
@@ -94,10 +103,12 @@ export class Store {
             name,
             memberIds,
             bulletin: "",
+            autoHandoffs: false,
             unread: false,
             createdAt: Date.now(),
             dm: dm || undefined,
             busyBotId: null,
+            queuedBotIds: [],
         };
         this.groups.unshift(group);
         this.saveGroups();
@@ -179,6 +190,23 @@ export class Store {
     activeLeaf(threadId) {
         return this.thread(threadId).activeLeafId;
     }
+    /** Keep a thread addressable while irreversibly replacing its transcript. */
+    clearThread(threadId) {
+        this.threads.set(threadId, { messages: [], activeLeafId: null });
+        this.saveThread(threadId);
+        const bot = this.botByThread(threadId);
+        if (bot) {
+            bot.resumeCursors = {};
+            bot.rewound = false;
+            bot.unread = false;
+            this.saveBots();
+        }
+        const group = this.groupByThread(threadId);
+        if (group) {
+            group.unread = false;
+            this.saveGroups();
+        }
+    }
     /** The visible conversation: root → activeLeafId. */
     activePath(threadId) {
         const t = this.thread(threadId);
@@ -201,7 +229,7 @@ export class Store {
     }
     /** Fork the conversation: a new user message that replaces `sourceId`
      * (same parent, new text) and becomes the active leaf. */
-    branchMessage(threadId, sourceId, text) {
+    branchMessage(threadId, sourceId, text, attachments) {
         const t = this.thread(threadId);
         const source = t.messages.find((m) => m.id === sourceId);
         if (!source)
@@ -212,6 +240,7 @@ export class Store {
             role: "user",
             kind: "text",
             text,
+            attachments: attachments !== undefined ? attachments : source.attachments,
             parentId: source.parentId ?? null,
         };
         t.messages.push(full);

@@ -35,7 +35,10 @@ export function createAcpDriver(support) {
     const DRIVER_KIND = support.driverKind;
     const SOURCE = support.nativeSource;
     const decodeConfig = decodeAcpConfig(support.defaultCli);
-    const DENY_TIMEOUT_NOTE = "OpenMausBot: nobody answered this permission request in time. Skip this action and finish what you can without it.";
+    /*
+    const DENY_TIMEOUT_NOTE =
+      "Gerer Build Studio: nobody answered this permission request in time. Skip this action and finish what you can without it.";
+    */
     return {
         driverKind: DRIVER_KIND,
         metadata: { displayName: support.displayName, supportsMultipleInstances: true },
@@ -177,7 +180,7 @@ export function createAcpDriver(support) {
                     const finish = (behavior) => {
                         if (!asks.delete(requestId))
                             return;
-                        clearTimeout(timer);
+                        // clearTimeout(timer);
                         const want = behavior === "allow" ? "allow" : "reject";
                         const optionId = behavior === "cancel" ? null : optionFor(want);
                         if (behavior !== "cancel" && !optionId)
@@ -195,11 +198,14 @@ export function createAcpDriver(support) {
                             source: optionId ? "user" : "system",
                         });
                     };
+                    // timeout disabled by user request
+                    /*
                     const timer = setTimeout(() => {
-                        emit({ ...base(threadId, turnId), type: "runtime.error", message: DENY_TIMEOUT_NOTE });
-                        finish("deny");
+                      emit({ ...base(threadId, turnId), type: "runtime.error", message: DENY_TIMEOUT_NOTE });
+                      finish("deny");
                     }, 15 * 60_000);
                     timer.unref?.();
+                    */
                     asks.set(requestId, finish);
                     emit({
                         ...base(threadId, turnId),

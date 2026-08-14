@@ -54,7 +54,7 @@ function profileInitials(profile?: { name?: string; email?: string }): string {
 function UpdateButton() {
   const s = useUpdaterState();
   const [checkedAt, setCheckedAt] = useState(0);
-  const updater = window.ogb?.updater;
+  const updater = window.gbs?.updater;
   // a check that found nothing lands back on idle — acknowledge it for 3s
   const upToDate = Boolean(checkedAt) && (!s || s.status === "idle") && Date.now() - checkedAt < 3000;
   useEffect(() => {

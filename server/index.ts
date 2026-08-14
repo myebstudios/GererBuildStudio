@@ -1,4 +1,4 @@
-// OpenMausBot server — the harness host. Clients hold no transports
+// Gerer Build Studio server — the harness host. Clients hold no transports
 // (upstream rule): the React app dispatches typed commands over HTTP and
 // folds one SSE event stream; every provider process runs here.
 import { randomBytes } from "node:crypto";
@@ -28,8 +28,8 @@ import {
   type UpdateTaskInput,
 } from "./tasks.ts";
 
-const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
-const STATIC_DIR = process.env.OMB_STATIC_DIR || null;
+const PORT = Number(process.env.GBS_PORT || 8799);
+const STATIC_DIR = process.env.GBS_STATIC_DIR || null;
 const MIME: Record<string, string> = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -71,10 +71,10 @@ function agentsIntegration(botId: string, depth: number) {
     args: [agentsProxyPath],
     env: {
       ...AGENTS_NODE_FLAG,
-      OMB_HARNESS_URL: `http://127.0.0.1:${PORT}`,
-      OMB_BOT_ID: botId,
-      OMB_COMMS_TOKEN: COMMS_TOKEN,
-      OMB_TURN_DEPTH: String(depth),
+      GBS_HARNESS_URL: `http://127.0.0.1:${PORT}`,
+      GBS_BOT_ID: botId,
+      GBS_COMMS_TOKEN: COMMS_TOKEN,
+      GBS_TURN_DEPTH: String(depth),
     },
   };
 }
@@ -314,7 +314,14 @@ function userDataRoot(): string {
 // Electron may restart or permissions may change.
 function readCuaConnection(): { command: string; args: string[]; env: Record<string, string> } | null {
   // new name first; pre-rename desktop builds used the old directory
-  for (const dir of ["OpenMausBot", "openmausbot", "OpenGrokBot", "opengrokbot"]) {
+  for (const dir of [
+    "Gerer Build Studio",
+    "gerer-build-studio",
+    "OpenMausBot",
+    "openmausbot",
+    "OpenGrokBot",
+    "opengrokbot",
+  ]) {
     try {
       const p = join(userDataRoot(), dir, "cua-connection.json");
       const conn = JSON.parse(readFileSync(p, "utf8"));
@@ -444,7 +451,7 @@ async function startTurn(
       : promptBody;
 
   const persona = [
-    `You are ${bot.name}, a personal bot in OpenMausBot.`,
+    `You are ${bot.name}, a personal bot in Gerer Build Studio.`,
     bot.title && `Role: ${bot.title}.`,
     bot.description && `About: ${bot.description}`,
   ]
@@ -555,7 +562,7 @@ async function startTurn(
 // @mention teammates; those get one chained turn (hop 1), never deeper.
 const groupQueues = new Map<string, Promise<void>>();
 const groupQueueEpoch = new Map<string, number>();
-const GROUP_TURN_TIMEOUT_MS = Math.max(1_000, Number(process.env.OMB_GROUP_TURN_TIMEOUT_MS) || 5 * 60_000);
+const GROUP_TURN_TIMEOUT_MS = Math.max(1_000, Number(process.env.GBS_GROUP_TURN_TIMEOUT_MS) || 5 * 60_000);
 const GROUP_CONTEXT_MESSAGES = 30;
 const MAX_GROUP_HOPS = 1;
 
@@ -653,7 +660,7 @@ async function runGroupMemberTurn(
   const attPrompt = formatAttachmentContext(latestUserMessage?.attachments);
   const projectContext = resolveProjectContext([latestUserText, group.bulletin, bot.description]);
   const system = [
-    `You are ${bot.name}, a bot in the room "${group.name}" in OpenMausBot.`,
+    `You are ${bot.name}, a bot in the room "${group.name}" in Gerer Build Studio.`,
     bot.title && `Role: ${bot.title}.`,
     bot.description && `About: ${bot.description}`,
     `Room members: ${roster}, and ${userName} (the human).`,
@@ -912,7 +919,7 @@ const server = createServer(async (req, res) => {
           }));
         return json(res, 200, { bots });
       }
-      const callerId = String(req.headers["x-omb-bot-id"] ?? "");
+      const callerId = String(req.headers["x-gbs-bot-id"] ?? req.headers["x-omb-bot-id"] ?? "");
       const caller = taskActorForBot(callerId);
       if (method === "GET" && path === "/api/internal/tasks") {
         if (!caller) return json(res, 401, { error: "unknown calling agent" });
@@ -1014,7 +1021,7 @@ const server = createServer(async (req, res) => {
             broadcastGroup(channel.id);
           }
         }
-        const prefixed = `[Message from @${fromName}, another bot in this OpenMausBot workspace. Reply to them.]\n\n${message}`;
+        const prefixed = `[Message from @${fromName}, another bot in this Gerer Build Studio workspace. Reply to them.]\n\n${message}`;
         const reply = await askBotAndWait(toBotId, prefixed, depth);
         if (from) {
           mirror(target, reply);
@@ -1366,7 +1373,7 @@ const server = createServer(async (req, res) => {
     // child proves it is OURS by echoing its pid (a stray dev server has
     // the same API shape but a different pid)
     if (method === "GET" && path === "/api/health") {
-      return json(res, 200, { app: "openmausbot", pid: process.pid, static: Boolean(STATIC_DIR) });
+      return json(res, 200, { app: "gerer-build-studio", pid: process.pid, static: Boolean(STATIC_DIR) });
     }
 
     // ── provider instances (model picker) ──
@@ -1436,7 +1443,7 @@ const server = createServer(async (req, res) => {
     }
 
     // packaged app: the server serves the built UI too (window → :8799 for
-    // everything, no dev proxy to die). OMB_STATIC_DIR is set by Electron.
+    // everything, no dev proxy to die). GBS_STATIC_DIR is set by Electron.
     if (method === "GET" && !path.startsWith("/api/") && STATIC_DIR) {
       const safe = path === "/" ? "/index.html" : path.replace(/\.\./g, "");
       const file = join(STATIC_DIR, safe);
@@ -1467,7 +1474,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`openmausbot server on http://127.0.0.1:${PORT}`);
+  console.log(`gerer-build-studio server on http://127.0.0.1:${PORT}`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

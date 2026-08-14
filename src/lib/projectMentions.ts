@@ -1,4 +1,4 @@
-import type { ProjectRecord } from "@/types/ogb";
+import type { ProjectRecord } from "@/types/gbs";
 
 export interface ProjectMentionQuery {
   start: number;

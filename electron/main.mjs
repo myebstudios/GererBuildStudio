@@ -24,10 +24,10 @@ let serverProc = null;
 let serverReady = true;
 
 // The packaged app has no terminal: everything about the server child's life
-// goes to ~/Library/Logs/OpenMausBot/server.log (Console.app-visible), which
-// is also why stdio is piped, not inherited — under a Finder launch the
-// parent's stdio leads nowhere and a failed boot is otherwise undiagnosable.
-const LOG_DIR = path.join(app.getPath("home"), "Library", "Logs", "OpenMausBot");
+// goes to ~/Library/Logs/Gerer Build Studio/server.log (Console.app-visible),
+// which is also why stdio is piped, not inherited — under a Finder launch
+// the parent's stdio leads nowhere and a failed boot is otherwise undiagnosable.
+const LOG_DIR = path.join(app.getPath("home"), "Library", "Logs", "Gerer Build Studio");
 let logStream = null;
 function slog(line) {
   try {
@@ -47,8 +47,8 @@ async function startServerOn(port) {
   const proc = utilityProcess.fork(entry, [], {
     env: {
       ...process.env,
-      OMB_STATIC_DIR: path.join(process.resourcesPath, "ui"),
-      OMB_PORT: String(port),
+      GBS_STATIC_DIR: path.join(process.resourcesPath, "ui"),
+      GBS_PORT: String(port),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -70,7 +70,7 @@ async function startServerOn(port) {
       const res = await fetch(`http://127.0.0.1:${port}/api/health`);
       if (res.ok) {
         const body = await res.json().catch(() => null);
-        if (body?.app === "openmausbot" && body.pid === proc.pid && body.static) return proc;
+        if (body?.app === "gerer-build-studio" && body.pid === proc.pid && body.static) return proc;
         break; // someone else owns this port — try the next one
       }
     } catch {
@@ -104,7 +104,7 @@ async function startServerPackaged() {
 const ERROR_PAGE =
   "data:text/html;charset=utf-8," +
   encodeURIComponent(
-    `<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#070707;color:#fcfcfc;font:15px -apple-system,system-ui"><div style="text-align:center;max-width:360px"><div style="font-size:40px">🐭</div><h2 style="font-weight:600;margin:12px 0 6px">Couldn't start the bot server</h2><p style="color:#fcfcfc99;line-height:1.5">Something else is using its ports. Quit and reopen OpenMausBot — if it keeps happening, restart your Mac.</p></div></body>`,
+    `<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#070707;color:#fcfcfc;font:15px -apple-system,system-ui"><div style="text-align:center;max-width:360px"><div style="font-size:40px">🐭</div><h2 style="font-weight:600;margin:12px 0 6px">Couldn't start the bot server</h2><p style="color:#fcfcfc99;line-height:1.5">Something else is using its ports. Quit and reopen Gerer Build Studio — if it keeps happening, restart your Mac.</p></div></body>`,
   );
 
 function createWindow() {

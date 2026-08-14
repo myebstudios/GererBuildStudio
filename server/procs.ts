@@ -96,6 +96,6 @@ export function killCliTree(child: ChildProcess): void {
  * (Node can't listen on a filesystem socket path there — EACCES). */
 export function brokerSocketPath(dataDir: string, tag: string): string {
   return process.platform === "win32"
-    ? `\\\\.\\pipe\\openmausbot-perm-${tag}`
+    ? `\\\\.\\pipe\\gerer-build-studio-perm-${tag}`
     : join(dataDir, `perm-${tag}.sock`);
 }

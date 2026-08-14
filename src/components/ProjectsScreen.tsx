@@ -13,7 +13,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import type { ProjectRecord } from "@/types/ogb";
+import type { ProjectRecord } from "@/types/gbs";
 import { cn } from "@/lib/cn";
 import { useProjects } from "@/state/projects";
 
@@ -31,7 +31,7 @@ function repositoryFolderName(repositoryUrl: string): string {
 }
 
 function childPath(parent: string, name: string): string {
-  const separator = window.ogb?.platform === "win32" ? "\\" : "/";
+  const separator = window.gbs?.platform === "win32" ? "\\" : "/";
   return `${parent.replace(/[\\/]+$/, "")}${separator}${name}`;
 }
 
@@ -48,7 +48,7 @@ function AddProjectModal({
   onClose: () => void;
   onAdded: (project: ProjectRecord) => void;
 }) {
-  const projectsApi = window.ogb?.projects;
+  const projectsApi = window.gbs?.projects;
   const [mode, setMode] = useState<AddMode>("choose");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -272,7 +272,7 @@ function AddProjectModal({
 }
 
 export function ProjectsScreen() {
-  const projectsApi = window.ogb?.projects;
+  const projectsApi = window.gbs?.projects;
   const { available, projects, error, refreshing, refresh, upsert, open } = useProjects();
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
@@ -323,7 +323,7 @@ export function ProjectsScreen() {
             <FolderKanban size={32} className="mx-auto text-accent" />
             <h2 className="mt-4 text-[16px] font-semibold text-ink">Open Projects in the desktop app</h2>
             <p className="mt-2 text-[13px] leading-5 text-ink-secondary">
-              Browsers cannot safely choose, create, or clone local folders. Launch OpenMausBot through Electron to manage projects.
+              Browsers cannot safely choose, create, or clone local folders. Launch Gerer Build Studio through Electron to manage projects.
             </p>
           </div>
         ) : (

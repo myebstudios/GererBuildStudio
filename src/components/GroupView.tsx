@@ -172,7 +172,7 @@ export function GroupView({ group }: { group: Group }) {
     }
   };
 
-  const isWin = window.ogb?.platform === "win32";
+  const isWin = window.gbs?.platform === "win32";
   const drag = isWin ? ({ WebkitAppRegion: "drag" } as React.CSSProperties) : undefined;
   const noDrag = isWin ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined;
 

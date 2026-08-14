@@ -76,8 +76,8 @@ interface Ask {
 }
 
 const DENY_TIMEOUT_NOTE =
-  "OpenMausBot: nobody answered this permission request in time. Skip this action and finish what you can without it.";
-const QUESTION_TIMEOUT_NOTE = "OpenMausBot: nobody answered in time. Use your best judgment and continue.";
+  "Gerer Build Studio: nobody answered this permission request in time. Skip this action and finish what you can without it.";
+const QUESTION_TIMEOUT_NOTE = "Gerer Build Studio: nobody answered in time. Use your best judgment and continue.";
 
 /** One human-readable line for an ask — what the card subtitle shows. */
 function askSummary(ask: Ask): string {
@@ -158,8 +158,8 @@ function createPermissionBroker(opts: {
     },
     close() {
       for (const p of [...pending.values()]) {
-        if (p.ask.kind === "question") p.finish("answer", "OpenMausBot: the turn is ending — wrap up.", "shutdown");
-        else p.finish("deny", "OpenMausBot: the turn ended", "shutdown");
+        if (p.ask.kind === "question") p.finish("answer", "Gerer Build Studio: the turn is ending — wrap up.", "shutdown");
+        else p.finish("deny", "Gerer Build Studio: the turn ended", "shutdown");
       }
       try {
         server.close();
@@ -258,8 +258,8 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
           args: [PROXY_PATH],
           env: {
             ...NODE_ENV_FLAG,
-            OGB_BOX_ID: turn.integrations.computer.boxId,
-            OGB_BOX_TOKEN: turn.integrations.computer.token,
+            GBS_BOX_ID: turn.integrations.computer.boxId,
+            GBS_BOX_TOKEN: turn.integrations.computer.token,
           },
         };
         allowed.push("mcp__computer");
@@ -305,9 +305,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
               source: resolved.source,
             }),
         });
-        args.push("--permission-prompt-tool", "mcp__ogb__approve");
-        mcpServers.ogb = { command: process.execPath, args: [PERM_PROXY_PATH, socketPath], env: { ...NODE_ENV_FLAG } };
-        allowed.push("mcp__ogb");
+        args.push("--permission-prompt-tool", "mcp__gbs__approve");
+        mcpServers.gbs = { command: process.execPath, args: [PERM_PROXY_PATH, socketPath], env: { ...NODE_ENV_FLAG } };
+        allowed.push("mcp__gbs");
       }
       if (Object.keys(mcpServers).length) {
         args.push("--mcp-config", JSON.stringify({ mcpServers }));

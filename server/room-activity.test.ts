@@ -48,8 +48,8 @@ posixOnly("room activity runtime", () => {
 
   beforeAll(async () => {
     chmodSync(fakeCli, 0o755);
-    home = mkdtempSync(join(tmpdir(), "omb-room-activity-"));
-    const dataDirectory = join(home, ".openmausbot");
+    home = mkdtempSync(join(tmpdir(), "gbs-room-activity-"));
+    const dataDirectory = join(home, ".gbs");
     mkdirSync(dataDirectory);
     writeFileSync(join(dataDirectory, "config.json"), JSON.stringify({
       instances: {
@@ -76,7 +76,7 @@ posixOnly("room activity runtime", () => {
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
         HOME: home,
         USERPROFILE: home,
-        OMB_PORT: String(port),
+        GBS_PORT: String(port),
       },
       stdio: ["ignore", "ignore", "pipe"],
     });

@@ -13,7 +13,7 @@ const posixIt = it.skipIf(process.platform === "win32");
 
 describe("augmentedPath", () => {
   afterEach(() => {
-    delete process.env.OMB_EXTRA_PATH;
+    delete process.env.GBS_EXTRA_PATH;
     resetPathCacheForTests();
   });
 
@@ -21,16 +21,16 @@ describe("augmentedPath", () => {
     resetPathCacheForTests();
     const path = augmentedPath();
     const firstExisting = (process.env.PATH ?? "").split(delimiter).filter(Boolean)[0];
-    // OMB_EXTRA_PATH is unset here, so the inherited PATH leads
+    // GBS_EXTRA_PATH is unset here, so the inherited PATH leads
     expect(path.split(delimiter)[0]).toBe(firstExisting);
   });
 
-  it("prepends OMB_EXTRA_PATH and dedupes", () => {
-    process.env.OMB_EXTRA_PATH = ["/tmp/omb-extra", "/tmp/omb-extra"].join(delimiter);
+  it("prepends GBS_EXTRA_PATH and dedupes", () => {
+    process.env.GBS_EXTRA_PATH = ["/tmp/gbs-extra", "/tmp/gbs-extra"].join(delimiter);
     resetPathCacheForTests();
     const parts = augmentedPath().split(delimiter);
-    expect(parts[0]).toBe("/tmp/omb-extra");
-    expect(parts.filter((p) => p === "/tmp/omb-extra")).toHaveLength(1);
+    expect(parts[0]).toBe("/tmp/gbs-extra");
+    expect(parts.filter((p) => p === "/tmp/gbs-extra")).toHaveLength(1);
   });
 
   posixIt("includes nvm bin dirs from the home dir, newest node first", () => {

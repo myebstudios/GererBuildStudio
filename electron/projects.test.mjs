@@ -117,18 +117,18 @@ describe("ProjectService", () => {
       await mkdir(destinationPath);
     });
     const service = new ProjectService({ dataDir, cloneRepository });
-    const destinationPath = path.join(workspace, "openmausbot-copy");
+    const destinationPath = path.join(workspace, "gerer-build-studio-copy");
 
     const project = await service.cloneProject({
-      repositoryUrl: "https://github.com/example/openmausbot",
+      repositoryUrl: "https://github.com/example/gerer-build-studio",
       destinationPath,
     });
 
     expect(cloneRepository).toHaveBeenCalledWith({
-      repositoryUrl: "https://github.com/example/openmausbot.git",
+      repositoryUrl: "https://github.com/example/gerer-build-studio.git",
       destinationPath: project.path,
     });
-    expect(project).toMatchObject({ source: "github", name: "openmausbot-copy", missing: false });
+    expect(project).toMatchObject({ source: "github", name: "gerer-build-studio-copy", missing: false });
   });
 
   it("retains a partial clone folder and does not register a failed clone", async () => {
@@ -151,7 +151,7 @@ describe("ProjectService", () => {
 
 describe("projectMentionSlug", () => {
   it.each([
-    ["OpenMausBot", "openmausbot"],
+    ["Gerer Build Studio", "gerer-build-studio"],
     ["My Project", "my-project"],
     ["Crème brûlée", "creme-brulee"],
     ["---", "project"],

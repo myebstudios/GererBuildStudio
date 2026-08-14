@@ -3,7 +3,7 @@ export {};
 
 declare global {
   interface Window {
-    ogb?: {
+    gbs?: {
       platform: string;
       screenFrame(): Promise<string | null>;
       speechStart(): Promise<void>;

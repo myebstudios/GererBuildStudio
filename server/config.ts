@@ -1,4 +1,4 @@
-// Config + data dirs. One file, ~/.openmausbot/config.json, env fallbacks:
+// Config + data dirs. One file, ~/.gbs/config.json, env fallbacks:
 //   { "xai": {"key":"xai-…"}, "composio": {"key":"ck_…"}, "box": {"token":"…"},
 //     "instances": { "<instanceId>": {"driver":"grok", …} } }
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from "node:fs";
@@ -20,9 +20,12 @@ export interface AppConfig {
   instances?: InstanceConfigMap;
 }
 
-// OMB_DATA_DIR isolates test/soak rigs from the user's real fleet.
-export const DATA_DIR = process.env.OMB_DATA_DIR ?? join(homedir(), ".openmausbot");
-const LEGACY_DATA_DIR = join(homedir(), ".opengrokbot");
+// GBS_DATA_DIR isolates test/soak rigs from the user's real fleet. The dir
+// itself stays short (".gbs", not ".gerer-build-studio") — it's joined with
+// per-turn unix socket names (server/procs.ts) and a long path here can push
+// those past the 104-byte sockaddr_un limit on macOS.
+export const DATA_DIR = process.env.GBS_DATA_DIR ?? join(homedir(), ".gbs");
+const LEGACY_DATA_DIR = join(homedir(), ".openmausbot");
 export const EVENTS_DIR = join(DATA_DIR, "events");
 export const NATIVE_DIR = join(DATA_DIR, "native");
 
@@ -52,7 +55,7 @@ export function loadConfig(): AppConfig {
   return cfg;
 }
 
-/** Merge a partial config into ~/.openmausbot/config.json (secrets never
+/** Merge a partial config into ~/.gbs/config.json (secrets never
  * echoed back — callers report configured-or-not booleans only). */
 export function saveConfig(patch: Partial<AppConfig>): void {
   const p = join(DATA_DIR, "config.json");

@@ -9,12 +9,12 @@ import { mentionedProjects, readRegisteredProjects, resolveProjectContext, type 
 
 const roots: string[] = [];
 afterEach(() => {
-  delete process.env.OMB_PROJECTS_FILE;
+  delete process.env.GBS_PROJECTS_FILE;
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "omb-project-context-"));
+  const root = mkdtempSync(join(tmpdir(), "gbs-project-context-"));
   roots.push(root);
   const availablePath = join(root, "Available");
   mkdirSync(availablePath);
@@ -30,7 +30,7 @@ describe("readRegisteredProjects", () => {
     const { root, availablePath, projects } = fixture();
     const filePath = join(root, "projects.json");
     writeFileSync(filePath, JSON.stringify(projects.map(({ available: _available, ...project }) => project)));
-    process.env.OMB_PROJECTS_FILE = filePath;
+    process.env.GBS_PROJECTS_FILE = filePath;
 
     expect(readRegisteredProjects()).toEqual(projects);
     expect(readRegisteredProjects()[0].path).toBe(availablePath);
@@ -103,10 +103,10 @@ posixOnly("project context turn integration", () => {
 
   beforeAll(async () => {
     chmodSync(fakeCli, 0o755);
-    home = mkdtempSync(join(tmpdir(), "omb-project-turn-"));
+    home = mkdtempSync(join(tmpdir(), "gbs-project-turn-"));
     workspace = join(home, "Trusted Workspace");
     mkdirSync(workspace);
-    const configDirectory = join(home, ".openmausbot");
+    const configDirectory = join(home, ".gbs");
     mkdirSync(configDirectory);
     writeFileSync(join(configDirectory, "config.json"), JSON.stringify({
       instances: {
@@ -128,8 +128,8 @@ posixOnly("project context turn integration", () => {
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
         HOME: home,
         USERPROFILE: home,
-        OMB_PORT: String(port),
-        OMB_PROJECTS_FILE: projectsFile,
+        GBS_PORT: String(port),
+        GBS_PROJECTS_FILE: projectsFile,
       },
       stdio: ["ignore", "ignore", "pipe"],
     });

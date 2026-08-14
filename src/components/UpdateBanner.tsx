@@ -14,11 +14,11 @@ export function UpdateBanner() {
   if (!s || s.status === "idle" || s.status === "checking") return null;
   const key = `${s.status}:${s.version ?? ""}`;
   if (dismissed === key) return null;
-  const updater = window.ogb!.updater!;
+  const updater = window.gbs!.updater!;
 
   const title =
     s.status === "available"
-      ? `OpenMausBot ${s.version} is available`
+      ? `Gerer Build Studio ${s.version} is available`
       : s.status === "downloading"
         ? `Downloading ${s.version ?? "update"}…`
         : s.status === "downloaded"

@@ -68,10 +68,10 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
 
   beforeAll(async () => {
     chmodSync(FAKE_CLI, 0o755);
-    home = mkdtempSync(join(tmpdir(), "omb-branch-test-"));
-    mkdirSync(join(home, ".openmausbot"), { recursive: true });
+    home = mkdtempSync(join(tmpdir(), "gbs-branch-test-"));
+    mkdirSync(join(home, ".gbs"), { recursive: true });
     writeFileSync(
-      join(home, ".openmausbot", "config.json"),
+      join(home, ".gbs", "config.json"),
       JSON.stringify({
         instances: {
           happy: { driver: "grokAgent", config: { cli: FAKE_CLI, fullAuto: true } },
@@ -90,7 +90,7 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
         HOME: home,
         USERPROFILE: home,
-        OMB_PORT: String(PORT),
+        GBS_PORT: String(PORT),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

@@ -1,6 +1,6 @@
 import { FolderOpen } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { ProjectRecord } from "@/types/ogb";
+import type { ProjectRecord } from "@/types/gbs";
 
 export function ProjectSuggestionList({
   projects,

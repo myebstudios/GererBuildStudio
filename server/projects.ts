@@ -25,8 +25,8 @@ function defaultUserDataRoot(): string {
 }
 
 export function projectRegistryCandidates(): string[] {
-  if (process.env.OMB_PROJECTS_FILE) return [process.env.OMB_PROJECTS_FILE];
-  return ["OpenMausBot", "openmausbot", "OpenGrokBot", "opengrokbot"].map((directory) =>
+  if (process.env.GBS_PROJECTS_FILE) return [process.env.GBS_PROJECTS_FILE];
+  return ["Gerer Build Studio", "gerer-build-studio", "OpenMausBot", "openmausbot", "OpenGrokBot", "opengrokbot"].map((directory) =>
     join(defaultUserDataRoot(), directory, "projects.json"),
   );
 }

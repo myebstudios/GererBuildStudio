@@ -51,8 +51,8 @@ function ProfileFields() {
 /** Manual update check row — packaged app only (no bridge in dev). */
 function UpdatesRow() {
   const s = useUpdaterState();
-  if (!window.ogb?.updater) return null;
-  const updater = window.ogb.updater;
+  if (!window.gbs?.updater) return null;
+  const updater = window.gbs.updater;
   const label =
     s?.status === "checking"
       ? "Checking…"

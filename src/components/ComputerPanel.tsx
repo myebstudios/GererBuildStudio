@@ -39,7 +39,7 @@ type Phase =
 export function ComputerPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   // local computer wording follows the host ("This Mac" / "This PC")
-  const localShort = window.ogb?.platform === "win32" ? "this PC" : "this Mac";
+  const localShort = window.gbs?.platform === "win32" ? "this PC" : "this Mac";
   const localLong = localShort.replace(/^./, (c) => c.toUpperCase());
   const [phase, setPhase] = useState<Phase>("checking");
   const [boxState, setBoxState] = useState<string | null>(null);
@@ -58,7 +58,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
     setPolledFrame(null);
     setLocalFrame(null);
     setError(null);
-    const isElectron = Boolean(window.ogb);
+    const isElectron = Boolean(window.gbs);
     if (bot.computer === "off") {
       setPhase("off");
       return;
@@ -130,12 +130,12 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
   // the user denied — surface the Settings repair path instead of spinning.
   const [localMisses, setLocalMisses] = useState(0);
   useEffect(() => {
-    if (phase !== "local" || !window.ogb) return;
+    if (phase !== "local" || !window.gbs) return;
     let alive = true;
     setLocalMisses(0);
     const shoot = async () => {
       try {
-        const url = await window.ogb!.screenFrame();
+        const url = await window.gbs!.screenFrame();
         if (alive && url) setLocalFrame(url);
         else if (alive) setLocalMisses((n) => n + 1);
       } catch {
@@ -233,7 +233,7 @@ export function ComputerPanel({ bot }: { bot: Bot }) {
               </span>
               {phase === "local" && localMisses >= 3 && (
                 <button
-                  onClick={() => window.ogb?.permOpenSettings?.("screen")}
+                  onClick={() => window.gbs?.permOpenSettings?.("screen")}
                   className="mt-1 rounded-lg bg-raised px-3 py-1.5 text-[12px] text-ink hover:bg-raised-hover"
                 >
                   Open Settings

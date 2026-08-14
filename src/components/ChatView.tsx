@@ -623,7 +623,7 @@ export function ChatView({ bot }: { bot: Bot }) {
 
   // on Windows the frameless window's min/max/close overlay sits at the
   // top-right: the header becomes the drag strip and clears room for it
-  const isWin = window.ogb?.platform === "win32";
+  const isWin = window.gbs?.platform === "win32";
   const drag = isWin ? ({ WebkitAppRegion: "drag" } as React.CSSProperties) : undefined;
   const noDrag = isWin ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined;
 

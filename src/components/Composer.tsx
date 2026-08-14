@@ -204,7 +204,7 @@ export function Composer({
   // helper runs; the final transcript stays in the box, ready to edit/send
   useEffect(() => {
     if (!recording) return;
-    const bridge = window.ogb;
+    const bridge = window.gbs;
     if (!bridge) {
       setRecording(false);
       return;
@@ -235,7 +235,7 @@ export function Composer({
   }, [recording]);
 
   const toggleMic = () => {
-    if (!window.ogb) {
+    if (!window.gbs) {
       setSpeechError("Voice input is available in the desktop app.");
       return;
     }

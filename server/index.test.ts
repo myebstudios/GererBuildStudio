@@ -29,11 +29,11 @@ const api = async (method: string, path: string, body?: unknown): Promise<{ stat
 };
 
 beforeAll(async () => {
-  home = mkdtempSync(join(tmpdir(), "omb-api-test-"));
+  home = mkdtempSync(join(tmpdir(), "gbs-api-test-"));
   // a fleet of exactly one unknown driver: no CLI probes, no network
-  mkdirSync(join(home, ".openmausbot"), { recursive: true });
+  mkdirSync(join(home, ".gbs"), { recursive: true });
   writeFileSync(
-    join(home, ".openmausbot", "config.json"),
+    join(home, ".gbs", "config.json"),
     JSON.stringify({ instances: { ghost: { driver: "not-a-real-driver", displayName: "Ghost" } } }),
   );
 
@@ -44,7 +44,7 @@ beforeAll(async () => {
       ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
       HOME: home,
       USERPROFILE: home,
-      OMB_PORT: String(PORT),
+      GBS_PORT: String(PORT),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -78,7 +78,7 @@ describe("harness HTTP API", () => {
   it("identifies itself on /api/health", async () => {
     const { status, body } = await api("GET", "/api/health");
     expect(status).toBe(200);
-    expect(body.app).toBe("openmausbot");
+    expect(body.app).toBe("gerer-build-studio");
     expect(typeof body.pid).toBe("number");
   });
 
@@ -167,7 +167,7 @@ describe("harness HTTP API", () => {
 
   it("reconciles an externally replaced task file on the next board request", async () => {
     const created = await api("POST", "/api/tasks", { title: "Created through the API" });
-    const file = join(home, ".openmausbot", "tasks.json");
+    const file = join(home, ".gbs", "tasks.json");
     const records = JSON.parse(readFileSync(file, "utf8"));
     const imported = { ...records.find((task: { id: string }) => task.id === created.body.task.id), id: "external-import", title: "Imported externally" };
     writeFileSync(file, JSON.stringify([...records, imported], null, 2));
@@ -228,7 +228,7 @@ describe("harness HTTP API", () => {
     })).body.group;
     expect((await api("POST", `/api/groups/${room.id}/messages`, { text: "A room note without a mention" })).status).toBe(202);
 
-    const dataDir = join(home, ".openmausbot");
+    const dataDir = join(home, ".gbs");
     const eventLog = join(dataDir, "events", `${bot.threadId}.ndjson`);
     const nativeLog = join(dataDir, "native", `${bot.threadId}.ndjson`);
     writeFileSync(eventLog, "old event\n");

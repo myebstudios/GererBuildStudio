@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { ProjectRecord } from "@/types/ogb";
+import type { ProjectRecord } from "@/types/gbs";
 
 function projectErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -22,7 +22,7 @@ interface ProjectsContextValue {
 const ProjectsContext = createContext<ProjectsContextValue | null>(null);
 
 export function ProjectsProvider({ children }: { children: ReactNode }) {
-  const projectsApi = window.ogb?.projects;
+  const projectsApi = window.gbs?.projects;
   const [projects, setProjects] = useState<ProjectRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);

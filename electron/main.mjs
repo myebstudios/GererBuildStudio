@@ -107,6 +107,19 @@ const ERROR_PAGE =
     `<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#070707;color:#fcfcfc;font:15px -apple-system,system-ui"><div style="text-align:center;max-width:360px"><div style="font-size:40px">🐭</div><h2 style="font-weight:600;margin:12px 0 6px">Couldn't start the bot server</h2><p style="color:#fcfcfc99;line-height:1.5">Something else is using its ports. Quit and reopen Gerer Build Studio — if it keeps happening, restart your Mac.</p></div></body>`,
   );
 
+async function loadDevUrl(win, url) {
+  for (let i = 0; i < 40; i++) {
+    if (win.isDestroyed()) return;
+    try {
+      await win.loadURL(url);
+      return;
+    } catch {
+      if (win.isDestroyed()) return;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+}
+
 function createWindow() {
   const isMac = process.platform === "darwin";
   const win = new BrowserWindow({
@@ -163,7 +176,7 @@ function createWindow() {
   if (app.isPackaged) {
     win.loadURL(serverReady ? `http://127.0.0.1:${SERVER_PORT}` : ERROR_PAGE);
   } else {
-    win.loadURL(DEV_URL);
+    loadDevUrl(win, DEV_URL);
   }
   return win;
 }

@@ -51,6 +51,8 @@ describe("mentionedBots", () => {
   it("gates automatic handoffs without changing mention resolution", () => {
     expect(automaticHandoffBots(false, "**@Milind**", peers)).toEqual([]);
     expect(automaticHandoffBots(true, "**@Milind**", peers).map((bot) => bot.id)).toEqual(["3"]);
+    expect(automaticHandoffBots(true, "`@Milind` and ```\n@Milind\n```", peers)).toEqual([]);
+    expect(automaticHandoffBots(true, "Hey @Milind, what about `@New Bot`?", peers).map((bot) => bot.id)).toEqual(["3"]);
   });
 });
 

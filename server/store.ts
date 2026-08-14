@@ -155,7 +155,9 @@ export function automaticHandoffBots<T extends { name: string; hidden?: boolean 
   text: string,
   peers: T[],
 ): T[] {
-  return enabled ? mentionedBots(text, peers) : [];
+  if (!enabled) return [];
+  const textWithoutCode = text.replace(/```[\s\S]*?```/g, "").replace(/`[^`]+`/g, "");
+  return mentionedBots(textWithoutCode, peers);
 }
 
 const onboardingCard = (): OptionCardData => ({

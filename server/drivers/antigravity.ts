@@ -169,7 +169,6 @@ export const AntigravityDriver: ProviderDriver<AntigravityConfig> = {
       const args = [
         "--print", prompt, // print mode reads the prompt from this argv value
         "--output-format", "stream-json",
-        "--print-timeout", "10m",
         "--add-dir", cwd,
         // fullAuto approves everything; otherwise accept-edits allows file
         // edits but auto-denies shell (no interactive channel in print mode)
@@ -295,6 +294,8 @@ export const AntigravityDriver: ProviderDriver<AntigravityConfig> = {
 
       // 11 min — just above agy's own 10m --print-timeout, so agy normally
       // settles first; this is the backstop for a fully wedged child.
+      // watchdog disabled by user request
+      /*
       watchdog = setTimeout(() => {
         if (!settled) {
           emit({ ...base(threadId, turnId), type: "runtime.error", message: "agy watchdog timeout" });
@@ -303,6 +304,7 @@ export const AntigravityDriver: ProviderDriver<AntigravityConfig> = {
         }
       }, 11 * 60_000);
       watchdog.unref?.();
+      */
 
       emit({ ...base(threadId, turnId), type: "turn.started" });
 

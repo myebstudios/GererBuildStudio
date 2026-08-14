@@ -75,9 +75,11 @@ interface Ask {
   at: number;
 }
 
+/*
 const DENY_TIMEOUT_NOTE =
   "Gerer Build Studio: nobody answered this permission request in time. Skip this action and finish what you can without it.";
 const QUESTION_TIMEOUT_NOTE = "Gerer Build Studio: nobody answered in time. Use your best judgment and continue.";
+*/
 
 /** One human-readable line for an ask — what the card subtitle shows. */
 function askSummary(ask: Ask): string {
@@ -100,7 +102,7 @@ function createPermissionBroker(opts: {
   onResolve: (resolved: Ask & { behavior: string; source: string }) => void;
   timeoutMs?: number;
 }) {
-  const timeoutMs = opts.timeoutMs ?? 15 * 60_000;
+  // const timeoutMs = opts.timeoutMs ?? 15 * 60_000;
   const pending = new Map<string, { ask: Ask; finish: (behavior: string, message: string | undefined, source: string) => void }>();
   try {
     unlinkSync(opts.socketPath);
@@ -126,12 +128,14 @@ function createPermissionBroker(opts: {
         const ask: Ask = { id: askId, kind, tool: msg.tool ?? "tool", input: msg.input ?? {}, at: Date.now() };
         const finish = (behavior: string, message: string | undefined, source: string) => {
           if (!pending.delete(askId)) return;
-          clearTimeout(timer);
+          // clearTimeout(timer);
           try {
             conn.write(JSON.stringify({ t: "answer", id: askId, behavior, message }) + "\n");
           } catch {}
           opts.onResolve({ ...ask, behavior, source });
         };
+        // timeout disabled by user request
+        /*
         const timer = setTimeout(
           () =>
             kind === "question"
@@ -140,6 +144,7 @@ function createPermissionBroker(opts: {
           timeoutMs,
         );
         timer.unref?.();
+        */
         pending.set(askId, { ask, finish });
         opts.onAsk(ask);
       }

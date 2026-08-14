@@ -4,7 +4,7 @@
 // bot messages carry a small maus + name cluster label. Bots reply only
 // when @mentioned (the composer's @ picker knows the members).
 import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowDown, Pin } from "lucide-react";
+import { Activity, ArrowDown, Pin, Smartphone } from "lucide-react";
 import { useStore, useStreaming, formatTime, type Bot, type Group } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { normalizeState } from "@/lib/mascot";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/cn";
 import { ProjectMentionText } from "./ProjectMentionText";
 import { ProjectMentionTextarea } from "./ProjectMentionTextarea";
 import { RoomActivityPanel } from "./RoomActivityPanel";
+import { MobilePreviewPanel } from "./MobilePreviewPanel";
 import { OptionCard } from "./OptionCard";
 import { AttachmentList } from "./AttachmentViewer";
 
@@ -140,6 +141,10 @@ export function GroupView({ group }: { group: Group }) {
     const saved = localStorage.getItem("room-activity-open");
     return saved === null ? window.matchMedia("(min-width: 1180px)").matches : saved === "true";
   });
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(() => {
+    const saved = localStorage.getItem("room-mobile-preview-open");
+    return saved === null ? window.matchMedia("(min-width: 1180px)").matches : saved === "true";
+  });
 
   const members = useMemo(
     () => group.memberIds.map((id) => state.bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b)),
@@ -150,6 +155,7 @@ export function GroupView({ group }: { group: Group }) {
   useEffect(() => setFollow(true), [group.id]);
   useEffect(() => setBulletinDraft(group.bulletin), [group.id, group.bulletin]);
   useEffect(() => localStorage.setItem("room-activity-open", String(activityOpen)), [activityOpen]);
+  useEffect(() => localStorage.setItem("room-mobile-preview-open", String(mobilePreviewOpen)), [mobilePreviewOpen]);
   useEffect(() => {
     if (follow) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [group.id, group.messages.length, streaming, group.busyBotId, follow]);
@@ -209,6 +215,19 @@ export function GroupView({ group }: { group: Group }) {
                 {activityCount}
               </span>
             )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobilePreviewOpen((open) => !open)}
+            aria-label={mobilePreviewOpen ? "Hide mobile preview" : "Show mobile preview"}
+            aria-pressed={mobilePreviewOpen}
+            className={cn(
+              "relative flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px]",
+              mobilePreviewOpen ? "bg-raised text-ink" : "text-ink-secondary hover:bg-raised/60 hover:text-ink",
+            )}
+          >
+            <Smartphone size={14} />
+            <span className="hidden sm:inline">Preview</span>
           </button>
         </div>
       </div>
@@ -352,6 +371,25 @@ export function GroupView({ group }: { group: Group }) {
             group={group}
             members={members}
             onClose={() => setActivityOpen(false)}
+            className="absolute inset-y-0 right-0 z-30 flex max-w-[88vw] shadow-2xl min-[1180px]:hidden"
+          />
+        </>
+      )}
+
+      {mobilePreviewOpen && (
+        <MobilePreviewPanel onClose={() => setMobilePreviewOpen(false)} className="hidden min-[1180px]:flex" />
+      )}
+
+      {mobilePreviewOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close mobile preview panel"
+            onClick={() => setMobilePreviewOpen(false)}
+            className="absolute inset-0 z-20 bg-black/55 min-[1180px]:hidden"
+          />
+          <MobilePreviewPanel
+            onClose={() => setMobilePreviewOpen(false)}
             className="absolute inset-y-0 right-0 z-30 flex max-w-[88vw] shadow-2xl min-[1180px]:hidden"
           />
         </>

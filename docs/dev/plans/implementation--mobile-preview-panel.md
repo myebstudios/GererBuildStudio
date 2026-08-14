@@ -76,4 +76,4 @@ Out of scope for v1: multi-device simultaneous preview, interaction mirroring/sy
 
 ## Approval
 
-Status: awaiting user approval
+Status: approved by Sandy (CEO) 2026-08-14. Implementation tracked in `docs/dev/fixes/doing--mobile-preview-panel.md`.

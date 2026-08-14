@@ -128,12 +128,36 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       preload: path.join(__dirname, "preload.cjs"),
+      // Enables the <webview> tag for the mobile device preview panel.
+      // Every guest attached through it is re-locked down in
+      // will-attach-webview below, regardless of what the renderer requests.
+      webviewTag: true,
     },
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
+  });
+
+  // Mobile preview panel hardening: force guest webPreferences before
+  // attach (a compromised/careless renderer can't loosen these by editing
+  // the <webview> tag's attributes), and keep the guest from navigating
+  // the app out of the preview or popping new windows.
+  win.webContents.on("will-attach-webview", (_event, webPreferences) => {
+    webPreferences.nodeIntegration = false;
+    webPreferences.nodeIntegrationInSubFrames = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+    delete webPreferences.preload;
+    delete webPreferences.preloadURL;
+  });
+
+  win.webContents.on("did-attach-webview", (_event, guestWebContents) => {
+    guestWebContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    guestWebContents.on("will-navigate", (navEvent, url) => {
+      if (!/^https?:/i.test(url)) navEvent.preventDefault();
+    });
   });
 
   if (app.isPackaged) {

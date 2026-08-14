@@ -103,6 +103,49 @@ posixOnly("CodexDriver turns (fake app-server)", () => {
     expect(turnStart.params.input[0].text).toBe("You are Testy.\n\nlist files");
   });
 
+  it("passes the agents-proxy integration to app-server as a TOML -c override, not a persisted config", async () => {
+    await create();
+    const dump = join(scratch, "dump.json");
+    process.env.FAKE_CODEX_DUMP = dump;
+
+    await instance.adapter.sendTurn({
+      threadId: "t-agents",
+      text: "check the board",
+      integrations: {
+        agents: {
+          command: "/usr/bin/node",
+          args: ["/path/to/agents-proxy.ts"],
+          env: { GBS_HARNESS_URL: "http://127.0.0.1:8899", GBS_BOT_ID: "bot-1", GBS_COMMS_TOKEN: "secret-token", GBS_TURN_DEPTH: "0" },
+        },
+      },
+    });
+    await recorder.until((e) => e.type === "turn.completed");
+
+    const seen = JSON.parse(readFileSync(dump, "utf8"));
+    expect(seen.argv[0]).toBe("app-server");
+    const overrides: string[] = [];
+    for (let i = 0; i < seen.argv.length - 1; i++) {
+      if (seen.argv[i] === "-c") overrides.push(seen.argv[i + 1]);
+    }
+    expect(overrides).toEqual([
+      'mcp_servers.gbs_agents.command="/usr/bin/node"',
+      'mcp_servers.gbs_agents.args=["/path/to/agents-proxy.ts"]',
+      'mcp_servers.gbs_agents.env={GBS_HARNESS_URL="http://127.0.0.1:8899",GBS_BOT_ID="bot-1",GBS_COMMS_TOKEN="secret-token",GBS_TURN_DEPTH="0"}',
+    ]);
+  });
+
+  it("omits the -c overrides entirely when no agents integration is given", async () => {
+    await create();
+    const dump = join(scratch, "dump.json");
+    process.env.FAKE_CODEX_DUMP = dump;
+
+    await instance.adapter.sendTurn({ threadId: "t-no-agents", text: "hi" });
+    await recorder.until((e) => e.type === "turn.completed");
+
+    const seen = JSON.parse(readFileSync(dump, "utf8"));
+    expect(seen.argv).toEqual(["app-server"]);
+  });
+
   it("streams agentMessage deltas without re-emitting the settled text", async () => {
     process.env.FAKE_CODEX_MODE = "stream";
     await create();

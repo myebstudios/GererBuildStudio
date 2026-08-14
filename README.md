@@ -145,7 +145,10 @@ separate from the repository-maintenance workflow in `docs/dev/fixes/`.
 
 Agents have full parity with the UI: `list_tasks`, `create_task`, `claim_task`, `update_task`,
 `delegate_task`, and `delete_task` cover everything a user can do from the board, all revision-checked and
-attributed to the calling bot.
+attributed to the calling bot. These tools (and peer-to-peer `ask_bot`) are only offered to bots on a driver
+that can actually mount them: Claude, Codex, and the ACP-based Grok/Gemini drivers today. The default
+Antigravity (`agy`) driver doesn't get them yet — that CLI has no mechanism to register a per-turn MCP
+server, so there's nothing to wire in until it does.
 
 ### Link a project to Trello
 

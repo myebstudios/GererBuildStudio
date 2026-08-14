@@ -21,6 +21,7 @@ plus poll/pull instead), and any change to the separate repository-maintenance b
 ## 1. Agent/user parity
 
 - [?] **Add a `delete_task` agent tool with matching internal route** — `server/drivers/agents-proxy.ts:113`, `server/index.ts:1028`. Agents now have full parity with the UI: list, create, claim, update, delegate, and delete.
+- [?] **Give Codex-driven bots task board access** — `server/drivers/codex.ts` (`agentsConfigOverrides`, `capabilities.agentsMcp: true`). Codex's `app-server` has no per-thread `mcpServers` RPC param, so the agents-proxy is mounted via `-c mcp_servers.gbs_agents.*` TOML overrides at spawn time — verified end to end against a live `codex app-server` via `mcpServerStatus/list` before landing. Antigravity (`agy` CLI) still has no equivalent mechanism (confirmed via `agy --help`); it needs upstream ACP support before it can offer these tools.
 
 ## 2. Trello account connection
 
@@ -46,6 +47,6 @@ plus poll/pull instead), and any change to the separate repository-maintenance b
 - [?] **Cover the new HTTP surface and `delete_task`** — `server/index.test.ts`, `server/drivers/agents-proxy.test.ts`.
 - [?] **Document the feature** — `README.md` ("Link a project to Trello"), `.env.example` (clarify `TRELLO_API_KEY` also seeds the in-app connection).
 
-`pnpm typecheck`, `pnpm test` (216 passing), and `pnpm build` all pass. A manual pass against a
+`pnpm typecheck`, `pnpm test` (218 passing), and `pnpm build` all pass. A manual pass against a
 real Trello account (connect, link, push, pull, "Sync now", disconnect) is left for the reviewer
 since it requires live Trello credentials this session does not have.

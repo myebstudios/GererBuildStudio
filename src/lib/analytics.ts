@@ -44,8 +44,16 @@ export function identifyEmail(email: string) {
 // first-run email gate state
 const GATE_KEY = "gbs-email-gate";
 export function emailGateDone(): boolean {
-  return Boolean(localStorage.getItem(GATE_KEY));
+  try {
+    return Boolean(typeof localStorage !== "undefined" && localStorage.getItem(GATE_KEY));
+  } catch {
+    return false;
+  }
 }
 export function setEmailGateDone(status: "submitted" | "skipped") {
-  localStorage.setItem(GATE_KEY, status);
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(GATE_KEY, status);
+    }
+  } catch {}
 }

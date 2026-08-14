@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { StoreProvider, useStore } from "@/state/store";
 import { Onboarding } from "@/components/Onboarding";
-import { emailGateDone, initAnalytics } from "@/lib/analytics";
+import { emailGateDone, setEmailGateDone, initAnalytics } from "@/lib/analytics";
 import { Sidebar } from "@/components/Sidebar";
 import { ChatView } from "@/components/ChatView";
 import { GroupView } from "@/components/GroupView";
@@ -90,6 +90,17 @@ export default function App() {
   const [gated, setGated] = useState(() => !emailGateDone());
   useEffect(() => {
     initAnalytics();
+    if (!emailGateDone()) {
+      fetch("/api/config")
+        .then((r) => r.json())
+        .then((cfg) => {
+          if (cfg?.profile?.email || cfg?.profile?.name) {
+            setEmailGateDone("submitted");
+            setGated(false);
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
   return (
     <StoreProvider>

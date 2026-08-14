@@ -54,7 +54,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   const saveProfile = () => {
     identifyEmail(email.trim().toLowerCase());
-    // persisted server-side (~/.gerer-build-studio/config.json) — the sidebar
+    setEmailGateDone("submitted");
+    // persisted server-side (~/.gbs/config.json) — the sidebar
     // footer reads it back through /api/config
     void fetch("/api/config", {
       method: "PUT",
@@ -62,6 +63,12 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       body: JSON.stringify({ profile: { name: name.trim(), email: email.trim().toLowerCase() } }),
     }).catch(() => {});
     setStep(1);
+  };
+
+  const skipAll = () => {
+    track("email_skipped");
+    setEmailGateDone("skipped");
+    onDone();
   };
 
   useEffect(() => {
@@ -131,10 +138,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               Continue
             </button>
             <button
-              onClick={() => {
-                track("email_skipped");
-                setStep(1);
-              }}
+              onClick={skipAll}
               className="mt-3 text-[12px] text-ink-secondary hover:text-ink"
             >
               Maybe later
@@ -207,6 +211,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               className="mt-5 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white"
             >
               Continue
+            </button>
+            <button onClick={finish} className="mt-3 text-[12px] text-ink-secondary hover:text-ink">
+              Skip for now
             </button>
           </div>
         )}

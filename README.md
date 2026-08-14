@@ -1,8 +1,8 @@
-> ⚠️ **No affiliation with any cryptocurrency.** OpenMausBot has no token. Any coin using the OpenMausBot, Maus, or SupaMaus name is not created, endorsed, or affiliated with this project or its maintainer. I have received no tokens, payment, or allocation from anyone, and I will not be endorsing any token.
+> ⚠️ **No affiliation with any cryptocurrency.** Gerer Build Studio has no token. Any coin using the Gerer Build Studio, Maus, or SupaMaus name is not created, endorsed, or affiliated with this project or its maintainer. I have received no tokens, payment, or allocation from anyone, and I will not be endorsing any token.
 
 <div align="center">
 
-# OpenMausBot
+# Gerer Build Studio
 
 **Your own team of AI bots, in a chat app.**
 
@@ -20,16 +20,16 @@ Talk to them like contacts. Watch them work. Approve what matters.
 
 <br>
 
-<a href="https://github.com/milind-soni/openmausbot-releases/releases/latest/download/OpenMausBot.dmg">
-  <img src="https://img.shields.io/github/v/release/milind-soni/openmausbot-releases?style=for-the-badge&label=%E2%AC%87%EF%B8%8F%20%20Download%20for%20macOS&labelColor=070707&color=1084fe" alt="Download the latest OpenMausBot for macOS (.dmg)" height="40">
+<a href="https://github.com/milind-soni/gerer-build-studio-releases/releases/latest/download/GererBuildStudio.dmg">
+  <img src="https://img.shields.io/github/v/release/milind-soni/gerer-build-studio-releases?style=for-the-badge&label=%E2%AC%87%EF%B8%8F%20%20Download%20for%20macOS&labelColor=070707&color=1084fe" alt="Download the latest Gerer Build Studio for macOS (.dmg)" height="40">
 </a>
 
-<sub>Apple silicon · signed & notarized · one-click .dmg, always the latest · [all releases](https://github.com/milind-soni/openmausbot-releases/releases)</sub>
+<sub>Apple silicon · signed & notarized · one-click .dmg, always the latest · [all releases](https://github.com/milind-soni/gerer-build-studio-releases/releases)</sub>
 
 <br>
 <br>
 
-<img src="docs/screenshots/hero.png" alt="OpenMausBot — a Telegram-style chat app where every chat is a real AI agent" width="900">
+<img src="docs/screenshots/hero.png" alt="Gerer Build Studio — a Telegram-style chat app where every chat is a real AI agent" width="900">
 
 </div>
 
@@ -37,7 +37,7 @@ Talk to them like contacts. Watch them work. Approve what matters.
 
 ## Why
 
-One assistant in one box is the wrong shape for agents. OpenMausBot is an open-source take on **Grok Bot** —
+One assistant in one box is the wrong shape for agents. Gerer Build Studio is an open-source take on **Grok Bot** —
 it keeps the idea (AI as a *messaging app*: a roster of bots you chat with, each with its own personality,
 memory of its thread, model, computer, and apps) and rebuilds it open, local-first, and on the agents you
 already have:
@@ -45,7 +45,7 @@ already have:
 - **Bring your own agents.** Bots run on the `claude`, `codex`, and `grok` CLIs installed on your Mac — your
   existing logins and subscriptions, no new accounts, no proxy in the middle.
 - **Local first.** One small harness server on `127.0.0.1` owns every agent process. Transcripts, keys, and
-  events live in `~/.openmausbot`, not a cloud.
+  events live in `~/.gerer-build-studio`, not a cloud.
 - **Agents with hands.** Each bot can get a real computer — a cloud Linux desktop it drives while you watch
   live, or your own Mac — plus 500+ apps through Composio Connect.
 
@@ -140,18 +140,18 @@ two agents cannot silently claim or overwrite the same task; a conflict returns 
 losing agent and refreshes the UI. Completed agent work should move to **Review** for user verification.
 
 Task assignment records intent—it does not launch a bot in the background. A user-initiated turn is still
-required for an agent to act. Runtime tasks are stored locally in `~/.openmausbot/tasks.json`; they are
+required for an agent to act. Runtime tasks are stored locally in `~/.gerer-build-studio/tasks.json`; they are
 separate from the repository-maintenance workflow in `docs/dev/fixes/`.
 
 ### Refer to projects and bots
 
 Every registered project gets a stable handle shown on its Projects card. Type `#` in a message, room
-bulletin, or bot description to search for it. For example, `Review the tests in #openmausbot` gives the
+bulletin, or bot description to search for it. For example, `Review the tests in #gerer-build-studio` gives the
 agent that project's canonical folder and uses it as the turn's working directory when it is the only
 project referenced. Unknown hashtags remain plain text, and multiple project references provide paths
 without choosing an ambiguous working directory.
 
-Rooms also support `@bot` routing, so the two can be combined: `@Scout audit #openmausbot` brings Scout into
+Rooms also support `@bot` routing, so the two can be combined: `@Scout audit #gerer-build-studio` brings Scout into
 the room with the registered project as context.
 
 Room activity stays visible in a dedicated right-side workstream. It groups live agent turns, tool and
@@ -198,13 +198,13 @@ flowchart LR
 
 ## Quick start
 
-**Easiest:** [download the latest .dmg](https://github.com/milind-soni/openmausbot-releases/releases/latest),
+**Easiest:** [download the latest .dmg](https://github.com/milind-soni/gerer-build-studio-releases/releases/latest),
 drag it to Applications, open it. The harness server is embedded — no setup.
 
 **From source:**
 
 ```sh
-git clone https://github.com/milind-soni/OpenMausBot && cd OpenMausBot
+git clone https://github.com/milind-soni/GererBuildStudio && cd GererBuildStudio
 pnpm install
 
 pnpm dev:server    # harness server → 127.0.0.1:8799
@@ -244,6 +244,6 @@ small; adding a provider is one file in [`server/drivers/`](server/drivers/) plu
 
 [MIT](LICENSE) © 2026 Milind Soni and contributors.
 
-OpenMausBot is an independent, open-source project inspired by Grok Bot. It is
+Gerer Build Studio is an independent, open-source project inspired by Grok Bot. It is
 not affiliated with, endorsed by, or associated with xAI; "Grok" is a trademark
 of its respective owner.

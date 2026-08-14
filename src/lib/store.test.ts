@@ -150,3 +150,33 @@ describe("shared task board state", () => {
     expect(reducer(withBot, { type: "select", id: "one" })).toMatchObject({ taskBoardOpen: false, projectsOpen: false });
   });
 });
+
+describe("dedicated settings page state", () => {
+  it("opens settings and closes task board and projects", () => {
+    const openBoard = reducer(initialState, { type: "toggleTaskBoard", open: true });
+    expect(openBoard).toMatchObject({ taskBoardOpen: true, appSettingsOpen: false });
+    const openSettings = reducer(openBoard, { type: "toggleAppSettings", open: true });
+    expect(openSettings).toMatchObject({ taskBoardOpen: false, projectsOpen: false, appSettingsOpen: true });
+  });
+
+  it("resets appSettingsOpen when selecting a bot or group", () => {
+    const withBotAndGroup = {
+      ...initialState,
+      appSettingsOpen: true,
+      bots: [bot("one", "thread-1")],
+      groups: [group("room-1", "thread-r1")],
+    };
+    const selectBot = reducer(withBotAndGroup, { type: "select", id: "one" });
+    expect(selectBot).toMatchObject({ appSettingsOpen: false, selectedId: "one" });
+
+    const selectGroup = reducer(withBotAndGroup, { type: "select", id: "room-1" });
+    expect(selectGroup).toMatchObject({ appSettingsOpen: false, selectedId: "room-1" });
+  });
+
+  it("resets appSettingsOpen when a bot is added", () => {
+    const withSettings = { ...initialState, appSettingsOpen: true };
+    const newBot = bot("two", "thread-2");
+    const afterAdd = reducer(withSettings, { type: "botAdded", bot: newBot });
+    expect(afterAdd).toMatchObject({ appSettingsOpen: false, selectedId: "two" });
+  });
+});

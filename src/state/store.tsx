@@ -336,11 +336,12 @@ export function reducer(state: AppState, action: Action): AppState {
           selectedId: action.id,
           projectsOpen: false,
           taskBoardOpen: false,
+          appSettingsOpen: false,
           groups: state.groups.map((g) => (g.id === action.id ? { ...g, unread: false } : g)),
         };
       }
       return updateBot(
-        withMascotMotion({ ...state, selectedId: action.id, projectsOpen: false, taskBoardOpen: false }, action.id, "switch"),
+        withMascotMotion({ ...state, selectedId: action.id, projectsOpen: false, taskBoardOpen: false, appSettingsOpen: false }, action.id, "switch"),
         action.id,
         (b) => ({ ...b, unread: false }),
       );
@@ -361,6 +362,7 @@ export function reducer(state: AppState, action: Action): AppState {
         selectedId: action.bot.id,
         projectsOpen: false,
         taskBoardOpen: false,
+        appSettingsOpen: false,
       }, action.bot.id, "arrive");
     case "deleteBot": {
       const bots = state.bots.filter((b) => b.id !== action.botId);

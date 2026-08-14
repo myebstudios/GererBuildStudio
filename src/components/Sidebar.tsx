@@ -767,10 +767,13 @@ export function Sidebar() {
           <Puzzle size={20} className="text-ink-secondary" />
           <span className="text-[14px] text-ink">Plugins</span>
         </button>
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => dispatch({ type: "toggleAppSettings" })}
-            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-raised/50"
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left",
+              state.appSettingsOpen ? "bg-raised" : "hover:bg-raised/50",
+            )}
           >
             <InitialsAvatar initials={profileInitials(state.config?.profile)} size={28} />
             <span className="truncate text-[14px] text-ink">
@@ -780,7 +783,12 @@ export function Sidebar() {
           <UpdateButton />
           <button
             onClick={() => dispatch({ type: "toggleAppSettings" })}
-            className="rounded-md p-2 text-ink-secondary hover:bg-raised hover:text-ink"
+            className={cn(
+              "rounded-md p-2",
+              state.appSettingsOpen
+                ? "bg-raised text-accent"
+                : "text-ink-secondary hover:bg-raised hover:text-ink",
+            )}
             title="App settings"
           >
             <Settings size={18} />

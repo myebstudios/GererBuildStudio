@@ -9,7 +9,7 @@ import { GroupView } from "@/components/GroupView";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { PluginsPanel } from "@/components/PluginsPanel";
 import { ComputerPanel } from "@/components/ComputerPanel";
-import { AppSettingsPanel } from "@/components/AppSettingsPanel";
+import { SettingsScreen } from "@/components/SettingsScreen";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { ProjectsScreen } from "@/components/ProjectsScreen";
 import { TaskBoardScreen } from "@/components/TaskBoardScreen";
@@ -55,7 +55,9 @@ function Shell() {
       <UpdateBanner />
       <div className="relative flex min-h-0 flex-1">
       <Sidebar />
-      {state.taskBoardOpen ? (
+      {state.appSettingsOpen ? (
+        <SettingsScreen />
+      ) : state.taskBoardOpen ? (
         <TaskBoardScreen />
       ) : state.projectsOpen ? (
         <ProjectsScreen />
@@ -78,7 +80,6 @@ function Shell() {
       )}
       {state.settingsOpen && bot && <SettingsPanel bot={bot} />}
       {state.computerOpen && bot && <ComputerPanel bot={bot} />}
-      {state.appSettingsOpen && <AppSettingsPanel />}
       {state.pluginsOpen && <PluginsPanel />}
       </div>
     </div>

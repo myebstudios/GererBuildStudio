@@ -164,7 +164,7 @@ export interface AppState {
   /** selected chat — a bot id OR a group id */
   selectedId: string;
   settingsOpen: boolean;
-  pluginsOpen: boolean;
+  appsOpen: boolean;
   computerOpen: boolean;
   appSettingsOpen: boolean;
   projectsOpen: boolean;
@@ -222,6 +222,7 @@ export type Action =
   | { type: "connected"; value: boolean }
   | { type: "error"; message: string | null }
   | { type: "toggleSettings"; open?: boolean }
+  | { type: "toggleApps"; open?: boolean }
   | { type: "togglePlugins"; open?: boolean }
   | { type: "toggleComputer"; open?: boolean }
   | { type: "toggleAppSettings"; open?: boolean }
@@ -334,6 +335,7 @@ export function reducer(state: AppState, action: Action): AppState {
         return {
           ...state,
           selectedId: action.id,
+          appsOpen: false,
           projectsOpen: false,
           taskBoardOpen: false,
           appSettingsOpen: false,
@@ -341,7 +343,7 @@ export function reducer(state: AppState, action: Action): AppState {
         };
       }
       return updateBot(
-        withMascotMotion({ ...state, selectedId: action.id, projectsOpen: false, taskBoardOpen: false, appSettingsOpen: false }, action.id, "switch"),
+        withMascotMotion({ ...state, selectedId: action.id, appsOpen: false, projectsOpen: false, taskBoardOpen: false, appSettingsOpen: false }, action.id, "switch"),
         action.id,
         (b) => ({ ...b, unread: false }),
       );
@@ -360,6 +362,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         bots: [action.bot, ...state.bots],
         selectedId: action.bot.id,
+        appsOpen: false,
         projectsOpen: false,
         taskBoardOpen: false,
         appSettingsOpen: false,
@@ -491,13 +494,23 @@ export function reducer(state: AppState, action: Action): AppState {
         settingsOpen: open,
         computerOpen: open ? false : state.computerOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
+        appsOpen: open ? false : state.appsOpen,
         projectsOpen: open ? false : state.projectsOpen,
         taskBoardOpen: open ? false : state.taskBoardOpen,
       };
     }
+    case "toggleApps":
     case "togglePlugins": {
-      const open = action.open ?? !state.pluginsOpen;
-      return { ...state, pluginsOpen: open, projectsOpen: open ? false : state.projectsOpen, taskBoardOpen: open ? false : state.taskBoardOpen };
+      const open = action.open ?? !state.appsOpen;
+      return {
+        ...state,
+        appsOpen: open,
+        settingsOpen: open ? false : state.settingsOpen,
+        computerOpen: open ? false : state.computerOpen,
+        appSettingsOpen: open ? false : state.appSettingsOpen,
+        projectsOpen: open ? false : state.projectsOpen,
+        taskBoardOpen: open ? false : state.taskBoardOpen,
+      };
     }
     case "toggleComputer": {
       const open = action.open ?? !state.computerOpen;
@@ -506,6 +519,7 @@ export function reducer(state: AppState, action: Action): AppState {
         computerOpen: open,
         settingsOpen: open ? false : state.settingsOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
+        appsOpen: open ? false : state.appsOpen,
         projectsOpen: open ? false : state.projectsOpen,
         taskBoardOpen: open ? false : state.taskBoardOpen,
       };
@@ -517,7 +531,7 @@ export function reducer(state: AppState, action: Action): AppState {
         appSettingsOpen: open,
         settingsOpen: open ? false : state.settingsOpen,
         computerOpen: open ? false : state.computerOpen,
-        pluginsOpen: open ? false : state.pluginsOpen,
+        appsOpen: open ? false : state.appsOpen,
         projectsOpen: open ? false : state.projectsOpen,
         taskBoardOpen: open ? false : state.taskBoardOpen,
       };
@@ -530,7 +544,7 @@ export function reducer(state: AppState, action: Action): AppState {
         settingsOpen: open ? false : state.settingsOpen,
         computerOpen: open ? false : state.computerOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
-        pluginsOpen: open ? false : state.pluginsOpen,
+        appsOpen: open ? false : state.appsOpen,
         taskBoardOpen: open ? false : state.taskBoardOpen,
       };
     }
@@ -543,7 +557,7 @@ export function reducer(state: AppState, action: Action): AppState {
         settingsOpen: open ? false : state.settingsOpen,
         computerOpen: open ? false : state.computerOpen,
         appSettingsOpen: open ? false : state.appSettingsOpen,
-        pluginsOpen: open ? false : state.pluginsOpen,
+        appsOpen: open ? false : state.appsOpen,
       };
     }
     case "updateBot": {
@@ -626,7 +640,7 @@ export const initialState: AppState = {
   config: null,
   selectedId: "",
   settingsOpen: false,
-  pluginsOpen: false,
+  appsOpen: false,
   computerOpen: false,
   appSettingsOpen: false,
   projectsOpen: false,

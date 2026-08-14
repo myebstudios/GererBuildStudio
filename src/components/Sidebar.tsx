@@ -19,7 +19,7 @@ import {
   RefreshCw,
   Search,
   Settings,
-  Puzzle,
+  LayoutGrid,
   FolderKanban,
   ListTodo,
   Trash2,
@@ -761,11 +761,14 @@ export function Sidebar() {
           <span className="text-[14px] text-ink">Projects</span>
         </button>
         <button
-          onClick={() => dispatch({ type: "togglePlugins", open: true })}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-raised/50"
+          onClick={() => dispatch({ type: "toggleApps", open: true })}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left",
+            state.appsOpen ? "bg-raised" : "hover:bg-raised/50",
+          )}
         >
-          <Puzzle size={20} className="text-ink-secondary" />
-          <span className="text-[14px] text-ink">Plugins</span>
+          <LayoutGrid size={20} className={state.appsOpen ? "text-accent" : "text-ink-secondary"} />
+          <span className="text-[14px] text-ink">Apps</span>
         </button>
         <div className="flex items-center gap-1">
           <button

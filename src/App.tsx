@@ -7,7 +7,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { ChatView } from "@/components/ChatView";
 import { GroupView } from "@/components/GroupView";
 import { SettingsPanel } from "@/components/SettingsPanel";
-import { PluginsPanel } from "@/components/PluginsPanel";
+import { AppsScreen } from "@/components/AppsScreen";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { SettingsScreen } from "@/components/SettingsScreen";
 import { UpdateBanner } from "@/components/UpdateBanner";
@@ -57,6 +57,8 @@ function Shell() {
       <Sidebar />
       {state.appSettingsOpen ? (
         <SettingsScreen />
+      ) : state.appsOpen ? (
+        <AppsScreen />
       ) : state.taskBoardOpen ? (
         <TaskBoardScreen />
       ) : state.projectsOpen ? (
@@ -80,7 +82,6 @@ function Shell() {
       )}
       {state.settingsOpen && bot && <SettingsPanel bot={bot} />}
       {state.computerOpen && bot && <ComputerPanel bot={bot} />}
-      {state.pluginsOpen && <PluginsPanel />}
       </div>
     </div>
   );

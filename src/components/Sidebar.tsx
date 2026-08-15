@@ -638,6 +638,12 @@ export function Sidebar() {
     )
     .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false));
   const visibleGroups = state.groups.filter((g) => !q || g.name.toLowerCase().includes(q));
+  const taskCounts = {
+    todo: state.tasks.filter((task) => task.status === "todo").length,
+    doing: state.tasks.filter((task) => task.status === "doing").length,
+    review: state.tasks.filter((task) => task.status === "review").length,
+  };
+  const activeTaskCount = taskCounts.todo + taskCounts.doing + taskCounts.review;
   const closeClearDialog = () => {
     const targetId = clearTarget?.id;
     setClearTarget(null);
@@ -744,9 +750,19 @@ export function Sidebar() {
         >
           <ListTodo size={20} className={state.taskBoardOpen ? "text-accent" : "text-ink-secondary"} />
           <span className="min-w-0 flex-1 text-[14px] text-ink">Task Board</span>
-          {state.tasks.filter((task) => task.status !== "done").length > 0 && (
-            <span className="rounded-full bg-raised px-1.5 py-0.5 text-[10px] text-ink-secondary">
-              {state.tasks.filter((task) => task.status !== "done").length}
+          {activeTaskCount > 0 && (
+            <span
+              className="flex items-center gap-1.5"
+              title={`${taskCounts.todo} todo · ${taskCounts.doing} doing · ${taskCounts.review} review`}
+            >
+              <span className="flex items-center gap-[3px]">
+                <span className={cn("size-1.5 rounded-full", taskCounts.todo > 0 ? "bg-ink-secondary" : "bg-raised")} />
+                <span className={cn("size-1.5 rounded-full", taskCounts.doing > 0 ? "bg-accent" : "bg-raised")} />
+                <span className={cn("size-1.5 rounded-full", taskCounts.review > 0 ? "bg-warning" : "bg-raised")} />
+              </span>
+              <span className="rounded-full bg-raised px-1.5 py-0.5 text-[10px] text-ink-secondary">
+                {activeTaskCount}
+              </span>
             </span>
           )}
         </button>

@@ -40,3 +40,9 @@ Add a "Tasks" panel to bot chats (tasks assigned to that bot) and rooms (tasks i
 ## Manual verification
 
 Verified end-to-end in a real browser against an isolated scratch server/data-dir (not the user's live session): seeded a bot with an assigned task, a room linked to a real registered project with a task in that project. Bot Tasks panel showed the assigned task with correct priority/status; room Tasks panel showed the project picker pre-filled and the project's task; clicking a task opened the Task Board with both tasks visible and correctly tagged. Confirmed neither panel (nor mobile preview) auto-opens on load.
+
+### QA Verification (Dell)
+- **Mobile Preview Auto-Open Regression Check:** Confirmed `mobilePreviewOpen` in both `ChatView.tsx` and `GroupView.tsx` now defaults to `localStorage` state (false on first load). Auto-open on wide viewports is completely resolved.
+- **Tasks Side Panel Audit:** Verified `TasksPanel` filtering (`assigneeBotId` for bots, `projectId` for rooms), project picker integration in room headers, and navigation to `TaskBoardScreen`.
+- **Backend & Types:** `PATCH /api/groups/:id` validated in `server/index.test.ts` for string/null/invalid type handling. `pnpm typecheck` passed cleanly. Zero defects identified.
+

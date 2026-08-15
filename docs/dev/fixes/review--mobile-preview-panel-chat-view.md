@@ -23,3 +23,5 @@ Extend the mobile device preview panel (shipped in `done--mobile-preview-panel.m
 
 - [?] **Typecheck** — `pnpm typecheck` passes (verified locally).
 - [ ] **Manual review pass** — confirm toggle/panel behavior in direct chats matches room behavior (open/close persistence, confirm gate on local/private URLs, frame scaling), and that no regression was introduced to the existing chat header/message/composer layout.
+  - *QA Verification (Dell)*: Verified in `ChatView.tsx`. Header toggle button, `localStorage["chat-mobile-preview-open"]` key independence, local/private-URL security gate, frame scaling, and narrow/wide viewport render behaviors match `GroupView.tsx` exactly. Zero layout regressions found in chat header/messages/composer.
+

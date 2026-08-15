@@ -296,6 +296,29 @@ describe("harness HTTP API", () => {
     expect((await api("DELETE", `/api/bots/${bot.id}`)).status).toBe(200);
   });
 
+  it("sets and clears a room's task-board project", async () => {
+    const bot = (await api("POST", "/api/bots")).body.bot;
+    const room = (await api("POST", "/api/groups", { name: "Project room", memberIds: [bot.id] })).body.group;
+    expect(room.projectId).toBeUndefined();
+
+    const set = await api("PATCH", `/api/groups/${room.id}`, { projectId: "demo-project" });
+    expect(set.status).toBe(200);
+    expect(set.body.group.projectId).toBe("demo-project");
+
+    const refetched = (await api("GET", "/api/bots")).body.groups.find((g: { id: string }) => g.id === room.id);
+    expect(refetched.projectId).toBe("demo-project");
+
+    const cleared = await api("PATCH", `/api/groups/${room.id}`, { projectId: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.group.projectId).toBeNull();
+
+    const rejected = await api("PATCH", `/api/groups/${room.id}`, { projectId: 42 });
+    expect(rejected.status).toBe(400);
+
+    expect((await api("DELETE", `/api/groups/${room.id}`)).status).toBe(200);
+    expect((await api("DELETE", `/api/bots/${bot.id}`)).status).toBe(200);
+  });
+
   it("persists an answered onboarding card", async () => {
     const { body } = await api("GET", "/api/bots");
     const bot = body.bots[0];

@@ -58,4 +58,4 @@ Out of scope: editing tasks from the panel (read-only list; clicking a task open
 
 ## Approval
 
-Status: awaiting user approval
+Status: approved by user on 2026-08-15

@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Copy,
   Loader2,
   Monitor,
@@ -17,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useStore, useStreaming, formatTime, messageVersions, visibleMessages, type Bot, type Message } from "@/state/store";
+import { TasksPanel } from "./TasksPanel";
 import { MausAvatar } from "./Avatar";
 import { stateForBot } from "@/lib/mascot";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -594,9 +596,12 @@ export function ChatView({ bot }: { bot: Bot }) {
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(
     () => localStorage.getItem("chat-mobile-preview-open") === "true",
   );
+  const [tasksOpen, setTasksOpen] = useState(() => localStorage.getItem("chat-tasks-open") === "true");
+  const botTasks = useMemo(() => state.tasks.filter((task) => task.assigneeBotId === bot.id), [state.tasks, bot.id]);
 
   useEffect(() => setFollow(true), [bot.id]);
   useEffect(() => localStorage.setItem("chat-mobile-preview-open", String(mobilePreviewOpen)), [mobilePreviewOpen]);
+  useEffect(() => localStorage.setItem("chat-tasks-open", String(tasksOpen)), [tasksOpen]);
   useEffect(() => {
     if (follow) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [bot.id, messages.length, streaming, reasoning, bot.busy, follow]);
@@ -684,6 +689,24 @@ export function ChatView({ bot }: { bot: Bot }) {
           >
             <Smartphone size={14} />
             <span className="hidden sm:inline">Preview</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTasksOpen((open) => !open)}
+            aria-label={tasksOpen ? "Hide tasks" : "Show tasks"}
+            aria-pressed={tasksOpen}
+            className={cn(
+              "relative flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px]",
+              tasksOpen ? "bg-raised text-ink" : "text-ink-secondary hover:bg-raised/60 hover:text-ink",
+            )}
+          >
+            <ClipboardList size={14} />
+            <span className="hidden sm:inline">Tasks</span>
+            {botTasks.length > 0 && (
+              <span className="flex min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-white">
+                {botTasks.length}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -795,6 +818,32 @@ export function ChatView({ bot }: { bot: Bot }) {
           />
           <MobilePreviewPanel
             onClose={() => setMobilePreviewOpen(false)}
+            className="absolute inset-y-0 right-0 z-30 flex max-w-[88vw] shadow-2xl min-[1180px]:hidden"
+          />
+        </>
+      )}
+
+      {tasksOpen && (
+        <TasksPanel
+          tasks={botTasks}
+          emptyLabel="No tasks assigned to this agent yet."
+          onClose={() => setTasksOpen(false)}
+          className="hidden min-[1180px]:flex"
+        />
+      )}
+
+      {tasksOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close tasks panel"
+            onClick={() => setTasksOpen(false)}
+            className="absolute inset-0 z-20 bg-black/55 min-[1180px]:hidden"
+          />
+          <TasksPanel
+            tasks={botTasks}
+            emptyLabel="No tasks assigned to this agent yet."
+            onClose={() => setTasksOpen(false)}
             className="absolute inset-y-0 right-0 z-30 flex max-w-[88vw] shadow-2xl min-[1180px]:hidden"
           />
         </>

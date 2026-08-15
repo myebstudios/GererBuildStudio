@@ -77,6 +77,8 @@ export interface Group {
   busyBotId?: string | null;
   /** ordered room members waiting to run after the active member */
   queuedBotIds?: string[];
+  /** the room's shared task-board project, for the room's Tasks panel */
+  projectId?: string | null;
   messages: Message[];
 }
 
@@ -194,7 +196,7 @@ export type Action =
   | { type: "groupDeleted"; groupId: string }
   | { type: "createGroup"; memberIds: string[]; name?: string }
   | { type: "sendGroup"; groupId: string; text: string; attachments?: Attachment[] }
-  | { type: "patchGroup"; groupId: string; patch: Partial<Pick<Group, "name" | "bulletin" | "memberIds" | "autoHandoffs">> }
+  | { type: "patchGroup"; groupId: string; patch: Partial<Pick<Group, "name" | "bulletin" | "memberIds" | "autoHandoffs" | "projectId">> }
   | { type: "deleteGroup"; groupId: string }
   | { type: "clearChat"; threadId: string }
   | { type: "threadCleared"; threadId: string }

@@ -1226,6 +1226,12 @@ const server = createServer(async (req, res) => {
         const ids = body.memberIds.filter((id: unknown): id is string => typeof id === "string" && Boolean(store.bot(id)));
         if (ids.length) patch.memberIds = ids;
       }
+      if (body.projectId !== undefined) {
+        if (body.projectId !== null && typeof body.projectId !== "string") {
+          return json(res, 400, { error: "projectId must be a string or null" });
+        }
+        patch.projectId = body.projectId;
+      }
       const group = store.patchGroup(m[1], patch);
       if (!group) return json(res, 404, { error: "no such room" });
       broadcast({ kind: "group", group });

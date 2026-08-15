@@ -85,6 +85,8 @@ export interface GroupRecord {
   busyBotId?: string | null;
   /** transient: ordered responders waiting behind the active member */
   queuedBotIds?: string[];
+  /** the room's shared task-board project, for the room's Tasks panel */
+  projectId?: string | null;
 }
 
 export interface BotRecord {
@@ -247,7 +249,7 @@ export class Store {
     );
   }
 
-  patchGroup(id: string, patch: Partial<Pick<GroupRecord, "name" | "memberIds" | "bulletin" | "autoHandoffs" | "unread" | "busyBotId" | "queuedBotIds">>): GroupRecord | null {
+  patchGroup(id: string, patch: Partial<Pick<GroupRecord, "name" | "memberIds" | "bulletin" | "autoHandoffs" | "unread" | "busyBotId" | "queuedBotIds" | "projectId">>): GroupRecord | null {
     const group = this.group(id);
     if (!group) return null;
     Object.assign(group, patch);

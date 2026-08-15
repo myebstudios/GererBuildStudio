@@ -37,21 +37,21 @@ import {
 import type { TrelloBoardOption, TrelloProjectLink } from "@/lib/trello";
 import { ApiError, api, useStore } from "@/state/store";
 
-const STATUS_LABELS: Record<TaskStatus, string> = {
+export const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: "Todo",
   doing: "Doing",
   review: "Review",
   done: "Done",
 };
 
-const STATUS_ICONS: Record<TaskStatus, typeof CircleDot> = {
+export const STATUS_ICONS: Record<TaskStatus, typeof CircleDot> = {
   todo: CircleDot,
   doing: Clock3,
   review: ClipboardCheck,
   done: CheckCircle2,
 };
 
-const PRIORITY_STYLES: Record<TaskPriority, string> = {
+export const PRIORITY_STYLES: Record<TaskPriority, string> = {
   low: "bg-ink-secondary/10 text-ink-secondary",
   normal: "bg-accent/10 text-accent",
   high: "bg-warning/10 text-warning",

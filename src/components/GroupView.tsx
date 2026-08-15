@@ -4,7 +4,7 @@
 // bot messages carry a small maus + name cluster label. Bots reply only
 // when @mentioned (the composer's @ picker knows the members).
 import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowDown, Pin, Smartphone } from "lucide-react";
+import { Activity, ArrowDown, ClipboardList, Pin, Smartphone } from "lucide-react";
 import { useStore, useStreaming, formatTime, type Bot, type Group } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { normalizeState } from "@/lib/mascot";
@@ -16,6 +16,7 @@ import { ProjectMentionText } from "./ProjectMentionText";
 import { ProjectMentionTextarea } from "./ProjectMentionTextarea";
 import { RoomActivityPanel } from "./RoomActivityPanel";
 import { MobilePreviewPanel } from "./MobilePreviewPanel";
+import { TasksPanel } from "./TasksPanel";
 import { OptionCard } from "./OptionCard";
 import { AttachmentList } from "./AttachmentViewer";
 
@@ -144,17 +145,23 @@ export function GroupView({ group }: { group: Group }) {
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(
     () => localStorage.getItem("room-mobile-preview-open") === "true",
   );
+  const [tasksOpen, setTasksOpen] = useState(() => localStorage.getItem("room-tasks-open") === "true");
 
   const members = useMemo(
     () => group.memberIds.map((id) => state.bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b)),
     [group.memberIds, state.bots],
   );
   const speaker = members.find((b) => b.id === group.busyBotId);
+  const roomTasks = useMemo(
+    () => (group.projectId ? state.tasks.filter((task) => task.projectId === group.projectId) : []),
+    [state.tasks, group.projectId],
+  );
 
   useEffect(() => setFollow(true), [group.id]);
   useEffect(() => setBulletinDraft(group.bulletin), [group.id, group.bulletin]);
   useEffect(() => localStorage.setItem("room-activity-open", String(activityOpen)), [activityOpen]);
   useEffect(() => localStorage.setItem("room-mobile-preview-open", String(mobilePreviewOpen)), [mobilePreviewOpen]);
+  useEffect(() => localStorage.setItem("room-tasks-open", String(tasksOpen)), [tasksOpen]);
   useEffect(() => {
     if (follow) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [group.id, group.messages.length, streaming, group.busyBotId, follow]);
@@ -176,6 +183,27 @@ export function GroupView({ group }: { group: Group }) {
   const noDrag = isWin ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined;
 
   const activityCount = Number(Boolean(group.busyBotId)) + (group.queuedBotIds?.length ?? 0);
+
+  const tasksProjectPicker = (
+    <label className="mt-2 flex items-center gap-1.5 text-[11px] text-ink-secondary">
+      Project
+      <select
+        value={group.projectId ?? ""}
+        onChange={(event) =>
+          dispatch({ type: "patchGroup", groupId: group.id, patch: { projectId: event.target.value || null } })
+        }
+        className="min-w-0 flex-1 rounded-md border border-hairline/50 bg-inset px-1.5 py-1 text-[11px] text-ink focus:border-accent focus:outline-none"
+      >
+        <option value="">No project</option>
+        {state.taskProjects.map((project) => (
+          <option key={project.id} value={project.id}>
+            #{project.mention} · {project.name}
+            {project.available ? "" : " (unavailable)"}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 
   return (
     <main className="relative flex h-full min-w-0 flex-1 bg-app">
@@ -227,6 +255,24 @@ export function GroupView({ group }: { group: Group }) {
           >
             <Smartphone size={14} />
             <span className="hidden sm:inline">Preview</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTasksOpen((open) => !open)}
+            aria-label={tasksOpen ? "Hide tasks" : "Show tasks"}
+            aria-pressed={tasksOpen}
+            className={cn(
+              "relative flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px]",
+              tasksOpen ? "bg-raised text-ink" : "text-ink-secondary hover:bg-raised/60 hover:text-ink",
+            )}
+          >
+            <ClipboardList size={14} />
+            <span className="hidden sm:inline">Tasks</span>
+            {roomTasks.length > 0 && (
+              <span className="flex min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-white">
+                {roomTasks.length}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -389,6 +435,34 @@ export function GroupView({ group }: { group: Group }) {
           />
           <MobilePreviewPanel
             onClose={() => setMobilePreviewOpen(false)}
+            className="absolute inset-y-0 right-0 z-30 flex max-w-[88vw] shadow-2xl min-[1180px]:hidden"
+          />
+        </>
+      )}
+
+      {tasksOpen && (
+        <TasksPanel
+          tasks={roomTasks}
+          emptyLabel={group.projectId ? "No tasks in this project yet." : "Set a project above to see its tasks here."}
+          headerExtra={tasksProjectPicker}
+          onClose={() => setTasksOpen(false)}
+          className="hidden min-[1180px]:flex"
+        />
+      )}
+
+      {tasksOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close tasks panel"
+            onClick={() => setTasksOpen(false)}
+            className="absolute inset-0 z-20 bg-black/55 min-[1180px]:hidden"
+          />
+          <TasksPanel
+            tasks={roomTasks}
+            emptyLabel={group.projectId ? "No tasks in this project yet." : "Set a project above to see its tasks here."}
+            headerExtra={tasksProjectPicker}
+            onClose={() => setTasksOpen(false)}
             className="absolute inset-y-0 right-0 z-30 flex max-w-[88vw] shadow-2xl min-[1180px]:hidden"
           />
         </>

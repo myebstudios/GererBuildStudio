@@ -591,10 +591,9 @@ export function ChatView({ bot }: { bot: Bot }) {
   // (upstream-verified failure). Scrolling back to the end re-arms it.
   const [follow, setFollow] = useState(true);
   const touchY = useRef(0);
-  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(() => {
-    const saved = localStorage.getItem("chat-mobile-preview-open");
-    return saved === null ? window.matchMedia("(min-width: 1180px)").matches : saved === "true";
-  });
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(
+    () => localStorage.getItem("chat-mobile-preview-open") === "true",
+  );
 
   useEffect(() => setFollow(true), [bot.id]);
   useEffect(() => localStorage.setItem("chat-mobile-preview-open", String(mobilePreviewOpen)), [mobilePreviewOpen]);

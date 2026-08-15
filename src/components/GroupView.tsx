@@ -141,10 +141,9 @@ export function GroupView({ group }: { group: Group }) {
     const saved = localStorage.getItem("room-activity-open");
     return saved === null ? window.matchMedia("(min-width: 1180px)").matches : saved === "true";
   });
-  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(() => {
-    const saved = localStorage.getItem("room-mobile-preview-open");
-    return saved === null ? window.matchMedia("(min-width: 1180px)").matches : saved === "true";
-  });
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(
+    () => localStorage.getItem("room-mobile-preview-open") === "true",
+  );
 
   const members = useMemo(
     () => group.memberIds.map((id) => state.bots.find((b) => b.id === id)).filter((b): b is Bot => Boolean(b)),

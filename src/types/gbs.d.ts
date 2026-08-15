@@ -6,6 +6,10 @@ declare global {
     gbs?: {
       platform: string;
       screenFrame(): Promise<string | null>;
+      /** Screenshots the mobile preview <webview>. fullPage captures beyond
+       * the visible viewport (via the CDP debugger); otherwise just the
+       * currently visible area. Returns a data: URL, or null on failure. */
+      previewScreenshot(input: { webContentsId: number; fullPage: boolean }): Promise<string | null>;
       speechStart(): Promise<void>;
       speechStop(): Promise<void>;
       onSpeechTranscript(

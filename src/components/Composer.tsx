@@ -29,11 +29,18 @@ export function Composer({
   group,
   members,
   onEditLast,
+  pendingAttachment,
+  onPendingAttachmentConsumed,
 }: {
   bot?: Bot;
   group?: Group;
   members?: Bot[];
   onEditLast?: () => void;
+  /** An attachment produced outside the composer (e.g. a mobile-preview
+   * screenshot) waiting to be staged. Cleared via onPendingAttachmentConsumed
+   * once it's been added, so the caller can hand off a new one later. */
+  pendingAttachment?: Attachment | null;
+  onPendingAttachmentConsumed?: () => void;
 }) {
   const { state, dispatch } = useStore();
   const { projects } = useProjects();
@@ -168,6 +175,12 @@ export function Composer({
   const handleRemoveAttachment = (id: string) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   };
+
+  useEffect(() => {
+    if (!pendingAttachment) return;
+    setAttachments((prev) => [...prev, pendingAttachment]);
+    onPendingAttachmentConsumed?.();
+  }, [pendingAttachment, onPendingAttachmentConsumed]);
 
   const handlePaste = (e: React.ClipboardEvent) => {
     const files = e.clipboardData?.files;

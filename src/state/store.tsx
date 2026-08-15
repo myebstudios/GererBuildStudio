@@ -722,15 +722,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [roomActivity, setRoomActivity] = useState<RoomActivityState>({});
   const deltaBuffer = useRef(new Map<string, { text: string; reasoning: string }>());
   const deltaFlush = useRef<number | null>(null);
-  const clearStream = (threadId: string) =>
+  const clearStream = (threadId: string) => {
+    // Drop any not-yet-flushed token deltas for this thread too — otherwise
+    // the pending rAF flush re-adds a stale/truncated tail of the just-
+    // committed message back into `streaming` right after this clears it,
+    // rendering a duplicate bubble underneath the real one.
+    deltaBuffer.current.delete(threadId);
     setStream((prev) => {
       if (!(threadId in prev.streaming) && !(threadId in prev.reasoning)) return prev;
       const { [threadId]: _s, ...streaming } = prev.streaming;
       const { [threadId]: _r, ...reasoning } = prev.reasoning;
       return { streaming, reasoning };
     });
+  };
   const clearThreadTransientState = (threadId: string) => {
-    deltaBuffer.current.delete(threadId);
     clearStream(threadId);
     setRoomActivity((current) => clearRoomActivity(current, threadId));
   };

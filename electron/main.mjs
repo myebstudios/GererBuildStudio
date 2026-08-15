@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session, shell, systemPreferences, utilityProcess } from "electron";
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session, shell, systemPreferences, utilityProcess, webContents } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,6 +191,36 @@ ipcMain.handle("screen:frame", async () => {
     thumbnailSize: { width: 1280, height: 800 },
   });
   return sources[0]?.thumbnail.toDataURL() ?? null;
+});
+
+// Mobile preview screenshots. Visible-area capture uses the normal
+// capturePage() API; full-page capture needs the CDP debugger to grab
+// content beyond the current viewport (Page.captureScreenshot with
+// captureBeyondViewport), since capturePage() can only see what's rendered.
+ipcMain.handle("webview:screenshot", async (_event, { webContentsId, fullPage }) => {
+  const wc = webContents.fromId(webContentsId);
+  if (!wc) return null;
+  if (!fullPage) {
+    const image = await wc.capturePage();
+    return image.toDataURL();
+  }
+  const dbg = wc.debugger;
+  const wasAttached = dbg.isAttached();
+  try {
+    if (!wasAttached) dbg.attach("1.3");
+    const metrics = await dbg.sendCommand("Page.getLayoutMetrics");
+    const size = metrics.cssContentSize ?? metrics.contentSize;
+    const width = Math.ceil(size.width);
+    const height = Math.ceil(size.height);
+    const { data } = await dbg.sendCommand("Page.captureScreenshot", {
+      format: "png",
+      captureBeyondViewport: true,
+      clip: { x: 0, y: 0, width, height, scale: 1 },
+    });
+    return `data:image/png;base64,${data}`;
+  } finally {
+    if (!wasAttached && dbg.isAttached()) dbg.detach();
+  }
 });
 
 // Onboarding permission checks. Status reads are free; the mic request

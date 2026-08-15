@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld("gbs", {
   platform: process.platform,
   /** One frame of this Mac's screen as a data: URL (Screen Recording TCC). */
   screenFrame: () => ipcRenderer.invoke("screen:frame"),
+  /** Screenshots the mobile preview <webview>. fullPage captures beyond the
+   * visible viewport via the CDP debugger; otherwise just the visible area. */
+  previewScreenshot: (input) => ipcRenderer.invoke("webview:screenshot", input),
   speechStart: () => ipcRenderer.invoke("speech:start"),
   speechStop: () => ipcRenderer.invoke("speech:stop"),
   onSpeechTranscript: (cb) => {

@@ -596,6 +596,7 @@ export function ChatView({ bot }: { bot: Bot }) {
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(
     () => localStorage.getItem("chat-mobile-preview-open") === "true",
   );
+  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const [tasksOpen, setTasksOpen] = useState(() => localStorage.getItem("chat-tasks-open") === "true");
   const botTasks = useMemo(() => state.tasks.filter((task) => task.assigneeBotId === bot.id), [state.tasks, bot.id]);
 
@@ -801,11 +802,17 @@ export function ChatView({ bot }: { bot: Bot }) {
         key={bot.id}
         bot={bot}
         onEditLast={lastUserMessage ? () => setEditingId(lastUserMessage.id) : undefined}
+        pendingAttachment={previewAttachment}
+        onPendingAttachmentConsumed={() => setPreviewAttachment(null)}
       />
       </section>
 
       {mobilePreviewOpen && (
-        <MobilePreviewPanel onClose={() => setMobilePreviewOpen(false)} className="hidden min-[1180px]:flex" />
+        <MobilePreviewPanel
+          onClose={() => setMobilePreviewOpen(false)}
+          onScreenshot={setPreviewAttachment}
+          className="hidden min-[1180px]:flex"
+        />
       )}
 
       {mobilePreviewOpen && (
@@ -818,6 +825,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           />
           <MobilePreviewPanel
             onClose={() => setMobilePreviewOpen(false)}
+            onScreenshot={setPreviewAttachment}
             className="absolute inset-y-0 right-0 z-30 flex max-w-[88vw] shadow-2xl min-[1180px]:hidden"
           />
         </>

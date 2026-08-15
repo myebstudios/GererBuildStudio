@@ -5,7 +5,7 @@
 // when @mentioned (the composer's @ picker knows the members).
 import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, ArrowDown, ClipboardList, Pin, Smartphone } from "lucide-react";
-import { useStore, useStreaming, formatTime, type Bot, type Group } from "@/state/store";
+import { useStore, useStreaming, formatTime, type Attachment, type Bot, type Group } from "@/state/store";
 import { MausAvatar } from "./Avatar";
 import { normalizeState } from "@/lib/mascot";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -145,6 +145,7 @@ export function GroupView({ group }: { group: Group }) {
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(
     () => localStorage.getItem("room-mobile-preview-open") === "true",
   );
+  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const [tasksOpen, setTasksOpen] = useState(() => localStorage.getItem("room-tasks-open") === "true");
 
   const members = useMemo(
@@ -392,7 +393,13 @@ export function GroupView({ group }: { group: Group }) {
         </button>
       )}
 
-      <Composer key={group.id} group={group} members={members} />
+      <Composer
+        key={group.id}
+        group={group}
+        members={members}
+        pendingAttachment={previewAttachment}
+        onPendingAttachmentConsumed={() => setPreviewAttachment(null)}
+      />
       </section>
 
       {activityOpen && (
@@ -422,7 +429,11 @@ export function GroupView({ group }: { group: Group }) {
       )}
 
       {mobilePreviewOpen && (
-        <MobilePreviewPanel onClose={() => setMobilePreviewOpen(false)} className="hidden min-[1180px]:flex" />
+        <MobilePreviewPanel
+          onClose={() => setMobilePreviewOpen(false)}
+          onScreenshot={setPreviewAttachment}
+          className="hidden min-[1180px]:flex"
+        />
       )}
 
       {mobilePreviewOpen && (
@@ -435,6 +446,7 @@ export function GroupView({ group }: { group: Group }) {
           />
           <MobilePreviewPanel
             onClose={() => setMobilePreviewOpen(false)}
+            onScreenshot={setPreviewAttachment}
             className="absolute inset-y-0 right-0 z-30 flex max-w-[88vw] shadow-2xl min-[1180px]:hidden"
           />
         </>

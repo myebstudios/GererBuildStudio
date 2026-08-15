@@ -642,8 +642,9 @@ export function Sidebar() {
     todo: state.tasks.filter((task) => task.status === "todo").length,
     doing: state.tasks.filter((task) => task.status === "doing").length,
     review: state.tasks.filter((task) => task.status === "review").length,
+    done: state.tasks.filter((task) => task.status === "done").length,
   };
-  const activeTaskCount = taskCounts.todo + taskCounts.doing + taskCounts.review;
+  const totalTaskCount = taskCounts.todo + taskCounts.doing + taskCounts.review + taskCounts.done;
   const closeClearDialog = () => {
     const targetId = clearTarget?.id;
     setClearTarget(null);
@@ -750,19 +751,24 @@ export function Sidebar() {
         >
           <ListTodo size={20} className={state.taskBoardOpen ? "text-accent" : "text-ink-secondary"} />
           <span className="min-w-0 flex-1 text-[14px] text-ink">Task Board</span>
-          {activeTaskCount > 0 && (
+          {totalTaskCount > 0 && (
             <span
-              className="flex items-center gap-1.5"
-              title={`${taskCounts.todo} todo · ${taskCounts.doing} doing · ${taskCounts.review} review`}
+              className="flex items-center gap-2"
+              title={`${taskCounts.todo} todo · ${taskCounts.doing} doing · ${taskCounts.review} review · ${taskCounts.done} done`}
             >
-              <span className="flex items-center gap-[3px]">
-                <span className={cn("size-1.5 rounded-full", taskCounts.todo > 0 ? "bg-ink-secondary" : "bg-raised")} />
-                <span className={cn("size-1.5 rounded-full", taskCounts.doing > 0 ? "bg-accent" : "bg-raised")} />
-                <span className={cn("size-1.5 rounded-full", taskCounts.review > 0 ? "bg-warning" : "bg-raised")} />
-              </span>
-              <span className="rounded-full bg-raised px-1.5 py-0.5 text-[10px] text-ink-secondary">
-                {activeTaskCount}
-              </span>
+              {([
+                ["todo", "bg-ink-secondary"],
+                ["doing", "bg-accent"],
+                ["review", "bg-warning"],
+                ["done", "bg-success"],
+              ] as const).map(([status, dotColor]) =>
+                taskCounts[status] > 0 ? (
+                  <span key={status} className="flex items-center gap-1">
+                    <span className={cn("size-1.5 rounded-full", dotColor)} />
+                    <span className="text-[10px] tabular-nums text-ink-secondary">{taskCounts[status]}</span>
+                  </span>
+                ) : null,
+              )}
             </span>
           )}
         </button>

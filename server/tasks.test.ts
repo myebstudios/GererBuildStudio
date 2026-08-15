@@ -54,6 +54,18 @@ describe("TaskStore", () => {
     expect(JSON.parse(readFileSync(join(root, "tasks.json"), "utf8"))).toHaveLength(1);
   });
 
+  it("supports all task types including task, bug, feature, research, documentation, and maintenance", () => {
+    const { root, store } = fixture();
+    const task = store.create({
+      title: "Update PySide6 app.exec_() to app.exec()",
+      type: "task",
+    }, user);
+
+    expect(task.type).toBe("task");
+    const reloaded = new TaskStore(root).get(task.id);
+    expect(reloaded?.type).toBe("task");
+  });
+
   it("rejects malformed persistence without overwriting it", () => {
     const { root } = fixture();
     const file = join(root, "tasks.json");

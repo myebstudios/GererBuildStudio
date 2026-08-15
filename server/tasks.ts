@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { newId } from "./contracts.ts";
 
 export const TASK_STATUSES = ["todo", "doing", "review", "done"] as const;
-export const TASK_TYPES = ["feature", "bug", "research", "documentation", "maintenance"] as const;
+export const TASK_TYPES = ["feature", "bug", "task", "research", "documentation", "maintenance"] as const;
 export const TASK_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 
 export type TaskStatus = (typeof TASK_STATUSES)[number];

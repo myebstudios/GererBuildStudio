@@ -52,6 +52,16 @@ function checkUrl(url, timeoutMs = 600) {
   });
 }
 
+async function waitForHarness(port, maxWaitMs = 30000, intervalMs = 250) {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    const ok = await checkHarness(port);
+    if (ok) return true;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return false;
+}
+
 async function waitForUrl(url, maxWaitMs = 30000, intervalMs = 250) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
@@ -95,9 +105,22 @@ async function main() {
       stdio: "inherit",
       env: { ...process.env, GBS_PORT: String(SERVER_PORT) },
     });
+    serverProc.on("exit", (code) => {
+      if (code !== 0 && code !== null) {
+        console.error(`[dev:desktop] Harness server exited with code ${code}.`);
+      }
+    });
     spawnedChildren.push(serverProc);
   } else {
     console.log(`[dev:desktop] Harness server already running on port ${SERVER_PORT}.`);
+  }
+
+  console.log(`[dev:desktop] Waiting for harness server to become ready on port ${SERVER_PORT}...`);
+  const serverReady = await waitForHarness(SERVER_PORT);
+  if (!serverReady) {
+    console.error(`[dev:desktop] Timed out waiting for harness server at http://127.0.0.1:${SERVER_PORT}/`);
+    cleanUp();
+    process.exit(1);
   }
 
   const isViteUp = await checkUrl(`http://127.0.0.1:${VITE_PORT}/`);

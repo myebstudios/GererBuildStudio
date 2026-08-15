@@ -1480,11 +1480,18 @@ const server = createServer(async (req, res) => {
       const { driver, config } = driverConfig;
       if (!driver.setAutoApprove) return json(res, 400, { error: "this provider has no configurable permission mode" });
       const nextConfig = driver.setAutoApprove(config, body.autoApprove);
-      saveConfig({
-        instances: {
-          [instanceId]: { driver: driver.driverKind, ...cfg.instances?.[instanceId], config: nextConfig },
-        },
-      });
+      // `instances` is all-or-nothing on disk (instanceConfigs only falls
+      // back to the built-in default fleet when disk has NO instances key
+      // at all) — writing just the touched instance would silently drop
+      // every other default-fleet instance the next time config loads.
+      // Materialize the full effective fleet first, patch only this one.
+      const fullFleet = instanceConfigs(cfg);
+      const instancesPatch: typeof fullFleet = {};
+      for (const [id, entry] of Object.entries(fullFleet)) {
+        const { environment: _environment, ...rest } = entry; // don't persist injected secrets
+        instancesPatch[id] = id === instanceId ? { ...rest, config: nextConfig } : rest;
+      }
+      saveConfig({ instances: instancesPatch });
       Object.assign(cfg, loadConfig());
       await reloadProviders();
       const instances = await registry.describe();

@@ -114,10 +114,12 @@ export const deleteAgent = mutation({
       .first();
 
     if (existing) {
-      await ctx.db.patch(existing._id, {
-        deleted: true,
-        updatedAt: args.updatedAt,
-      });
+      if (args.updatedAt >= existing.updatedAt) {
+        await ctx.db.patch(existing._id, {
+          deleted: true,
+          updatedAt: args.updatedAt,
+        });
+      }
       return true;
     }
     return false;

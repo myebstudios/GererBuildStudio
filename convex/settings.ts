@@ -60,7 +60,11 @@ export const pushSettings = mutation({
       .first();
 
     if (existing) {
-      if (args.updatedAt >= existing.updatedAt) {
+      // Older writes than what's already stored are expected no-ops under
+      // last-write-wins — `applied: false` lets the caller distinguish that
+      // from an actual failure instead of assuming the push landed.
+      const applied = args.updatedAt >= existing.updatedAt;
+      if (applied) {
         await ctx.db.patch(existing._id, {
           profile: args.profile ?? existing.profile,
           providerSecrets: args.providerSecrets ?? existing.providerSecrets,
@@ -68,7 +72,7 @@ export const pushSettings = mutation({
           updatedAt: args.updatedAt,
         });
       }
-      return existing._id;
+      return { id: existing._id, applied };
     } else {
       const id = await ctx.db.insert("settings", {
         ownerId,
@@ -77,7 +81,7 @@ export const pushSettings = mutation({
         instances: args.instances,
         updatedAt: args.updatedAt,
       });
-      return id;
+      return { id, applied: true };
     }
   },
 });

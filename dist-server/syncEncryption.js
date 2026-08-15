@@ -89,6 +89,14 @@ export function decryptSecrets(payload, passphrase) {
     if (payload.version !== ENCRYPTION_VERSION) {
         throw new Error(`Unsupported encryption payload version: ${payload.version}`);
     }
+    // Bound the untrusted stored iteration count: too low weakens the KDF,
+    // too high lets a corrupted/tampered record block the event loop for a
+    // long synchronous PBKDF2 run.
+    if (!Number.isInteger(payload.iterations) ||
+        payload.iterations < DEFAULT_KDF_ITERATIONS ||
+        payload.iterations > DEFAULT_KDF_ITERATIONS * 10) {
+        throw new Error(`Encrypted payload has an out-of-range iteration count: ${payload.iterations}`);
+    }
     const salt = Buffer.from(payload.salt, "hex");
     const iv = Buffer.from(payload.iv, "hex");
     const authTag = Buffer.from(payload.authTag, "hex");

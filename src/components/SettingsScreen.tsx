@@ -1,6 +1,6 @@
 // Dedicated full-screen Settings page with categorized sections:
 // Profile & Account, Connections & API Keys, Models & Providers, System & Updates.
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
   Check,
@@ -949,12 +949,17 @@ export function SettingsScreen() {
   const { state, dispatch } = useStore();
   const initialTab = (state.appSettingsTab as SettingsTab) || "profile";
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+  // Tracks the last store-driven tab request we applied, so a subsequent
+  // local tab click (which doesn't touch state.appSettingsTab) isn't
+  // stomped back to it on every render.
+  const appliedAppSettingsTab = useRef(state.appSettingsTab);
 
   useEffect(() => {
-    if (state.appSettingsTab && state.appSettingsTab !== activeTab) {
+    if (state.appSettingsTab && state.appSettingsTab !== appliedAppSettingsTab.current) {
+      appliedAppSettingsTab.current = state.appSettingsTab;
       setActiveTab(state.appSettingsTab as SettingsTab);
     }
-  }, [state.appSettingsTab, activeTab]);
+  }, [state.appSettingsTab]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

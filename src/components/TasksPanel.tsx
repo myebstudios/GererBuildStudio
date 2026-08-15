@@ -1,9 +1,12 @@
-import { AlertTriangle, CalendarDays, ClipboardList, Tag, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AlertTriangle, CalendarDays, ChevronDown, ChevronRight, ClipboardList, Tag, X } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { STATUS_ICONS, STATUS_LABELS, PRIORITY_STYLES } from "./TaskBoardScreen";
-import type { TaskRecord } from "@/lib/taskBoard";
+import type { TaskRecord, TaskStatus } from "@/lib/taskBoard";
 import { useStore } from "@/state/store";
+
+const STATUS_ORDER: TaskStatus[] = ["todo", "doing", "review", "done"];
 
 function TaskRow({ task, onOpen }: { task: TaskRecord; onOpen: () => void }) {
   const StatusIcon = STATUS_ICONS[task.status];
@@ -62,6 +65,26 @@ export function TasksPanel({
 }) {
   const { dispatch } = useStore();
   const openTask = () => dispatch({ type: "toggleTaskBoard", open: true });
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  const toggleStatus = (status: string) => {
+    setCollapsed((prev) => ({ ...prev, [status]: !prev[status] }));
+  };
+
+  const tasksByStatus = useMemo(() => {
+    const groups: Record<TaskStatus, TaskRecord[]> = {
+      todo: [],
+      doing: [],
+      review: [],
+      done: [],
+    };
+    for (const task of tasks) {
+      if (groups[task.status]) {
+        groups[task.status].push(task);
+      }
+    }
+    return groups;
+  }, [tasks]);
 
   return (
     <aside className={cn("flex h-full w-[320px] shrink-0 flex-col border-l border-hairline/40 bg-panel", className)} aria-label="Tasks">
@@ -85,10 +108,43 @@ export function TasksPanel({
         {tasks.length === 0 ? (
           <div className="py-10 text-center text-[12.5px] text-ink-secondary">{emptyLabel}</div>
         ) : (
-          <div className="flex flex-col gap-2">
-            {tasks.map((task) => (
-              <TaskRow key={task.id} task={task} onOpen={openTask} />
-            ))}
+          <div className="flex flex-col gap-4">
+            {STATUS_ORDER.map((status) => {
+              const groupTasks = tasksByStatus[status];
+              if (groupTasks.length === 0) return null;
+              const isCollapsed = Boolean(collapsed[status]);
+              const StatusIcon = STATUS_ICONS[status];
+              return (
+                <div key={status} className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleStatus(status)}
+                    className="flex w-full items-center justify-between px-1 py-1 text-[12px] font-semibold text-ink-secondary hover:text-ink transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                      <StatusIcon
+                        size={13}
+                        className={cn(
+                          status === "done" ? "text-success" : status === "review" ? "text-warning" : status === "doing" ? "text-accent" : "text-ink-secondary"
+                        )}
+                      />
+                      <span>{STATUS_LABELS[status]}</span>
+                    </div>
+                    <span className="rounded-full bg-raised px-1.5 py-0.5 text-[10px] font-medium text-ink-secondary">
+                      {groupTasks.length}
+                    </span>
+                  </button>
+                  {!isCollapsed && (
+                    <div className="flex flex-col gap-2">
+                      {groupTasks.map((task) => (
+                        <TaskRow key={task.id} task={task} onOpen={openTask} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

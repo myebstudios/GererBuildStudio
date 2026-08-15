@@ -569,7 +569,7 @@ function SystemSection() {
             <span
               className={cn(
                 "absolute top-1 size-4 rounded-full bg-white transition-transform",
-                autoHandoffs ? "translate-x-6" : "translate-x-1"
+                autoHandoffs ? "translate-x-5" : "translate-x-1"
               )}
             />
           </button>

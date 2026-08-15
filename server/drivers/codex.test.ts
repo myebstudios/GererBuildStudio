@@ -28,6 +28,17 @@ describe("CodexDriver.decodeConfig", () => {
   });
 });
 
+describe("CodexDriver auto-approve toggle", () => {
+  it("passes through fullAuto directly", () => {
+    const off = CodexDriver.decodeConfig({});
+    expect(CodexDriver.getAutoApprove!(off)).toBe(false);
+    const on = CodexDriver.setAutoApprove!(off, true);
+    expect(on.fullAuto).toBe(true);
+    expect(CodexDriver.getAutoApprove!(on)).toBe(true);
+    expect(CodexDriver.getAutoApprove!(CodexDriver.setAutoApprove!(on, false))).toBe(false);
+  });
+});
+
 posixOnly("CodexDriver turns (fake app-server)", () => {
   let instance: ProviderInstance;
   let recorder: EventRecorder;

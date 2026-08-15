@@ -33,6 +33,16 @@ describe("Antigravity decodeConfig", () => {
   });
 });
 
+describe("Antigravity auto-approve toggle", () => {
+  it("passes through fullAuto directly", () => {
+    const off = AntigravityDriver.setAutoApprove!(AntigravityDriver.decodeConfig({}), false);
+    expect(off.fullAuto).toBe(false);
+    expect(AntigravityDriver.getAutoApprove!(off)).toBe(false);
+    const on = AntigravityDriver.setAutoApprove!(off, true);
+    expect(AntigravityDriver.getAutoApprove!(on)).toBe(true);
+  });
+});
+
 posixOnly("Antigravity turns (fake CLI)", () => {
   let instance: ProviderInstance;
   let recorder: EventRecorder;

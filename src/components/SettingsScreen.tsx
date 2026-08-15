@@ -307,8 +307,20 @@ function ConnectionsSection() {
 }
 
 function ModelsSection() {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const instances = state.instances ?? [];
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [errorId, setErrorId] = useState<string | null>(null);
+
+  const setAutoApprove = (instanceId: string, autoApprove: boolean) => {
+    if (pendingId) return;
+    setPendingId(instanceId);
+    setErrorId(null);
+    api(`/api/instances/${instanceId}`, { method: "PATCH", body: JSON.stringify({ autoApprove }) })
+      .then(({ instances }) => dispatch({ type: "instances", instances }))
+      .catch(() => setErrorId(instanceId))
+      .finally(() => setPendingId(null));
+  };
 
   return (
     <div className="space-y-6">
@@ -382,6 +394,46 @@ function ModelsSection() {
                       )}
                     </span>
                   </div>
+
+                  {inst.autoApprove !== null && (
+                    <div className="mt-3.5 flex items-center justify-between gap-3 border-t border-hairline/40 pt-3.5">
+                      <div>
+                        <div className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
+                          <ShieldCheck size={13} className="text-ink-secondary" />
+                          {inst.autoApprove ? "Full auto" : "Ask before actions"}
+                        </div>
+                        <div className="mt-0.5 text-[12px] text-ink-secondary">
+                          {inst.autoApprove
+                            ? "Edits, commands, and tools run without asking."
+                            : "You'll be asked to approve edits, commands, and tools."}
+                        </div>
+                        {errorId === inst.instanceId && (
+                          <div className="mt-1 text-[11px] text-danger">Couldn't save — try again.</div>
+                        )}
+                      </div>
+                      <button
+                        role="switch"
+                        aria-checked={inst.autoApprove}
+                        disabled={pendingId === inst.instanceId}
+                        onClick={() => setAutoApprove(inst.instanceId, !inst.autoApprove)}
+                        className={cn(
+                          "relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors disabled:opacity-60",
+                          inst.autoApprove ? "bg-accent" : "bg-raised",
+                        )}
+                      >
+                        {pendingId === inst.instanceId ? (
+                          <Loader2 size={14} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin text-ink-secondary" />
+                        ) : (
+                          <span
+                            className={cn(
+                              "absolute top-[3px] size-5 rounded-full bg-white transition-all",
+                              inst.autoApprove ? "left-[21px]" : "left-[3px]",
+                            )}
+                          />
+                        )}
+                      </button>
+                    </div>
+                  )}
 
                   {!available && inst.snapshot.reason && (
                     <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">

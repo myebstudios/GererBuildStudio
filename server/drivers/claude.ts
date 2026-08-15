@@ -205,6 +205,11 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
   models: MODELS,
   decodeConfig,
   defaultConfig: () => decodeConfig({}),
+  getAutoApprove: (config) => config.permissionMode === "bypassPermissions",
+  setAutoApprove: (config, autoApprove) => ({
+    ...config,
+    permissionMode: autoApprove ? "bypassPermissions" : "acceptEdits",
+  }),
 
   async create(input: DriverCreateInput<ClaudeConfig>): Promise<ProviderInstance> {
     const { instanceId, config } = input;

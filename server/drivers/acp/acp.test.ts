@@ -34,6 +34,16 @@ describe("ACP decodeConfig", () => {
   });
 });
 
+describe("ACP auto-approve toggle", () => {
+  it("passes through fullAuto directly", () => {
+    const off = GrokAgentDriver.decodeConfig({});
+    expect(GrokAgentDriver.getAutoApprove!(off)).toBe(false);
+    const on = GrokAgentDriver.setAutoApprove!(off, true);
+    expect(on.fullAuto).toBe(true);
+    expect(GrokAgentDriver.getAutoApprove!(on)).toBe(true);
+  });
+});
+
 posixOnly("ACP turns (fake CLI)", () => {
   let instance: ProviderInstance;
   let recorder: EventRecorder;

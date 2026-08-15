@@ -38,6 +38,24 @@ describe("ClaudeDriver.decodeConfig", () => {
   });
 });
 
+describe("ClaudeDriver auto-approve toggle", () => {
+  it("reads bypassPermissions as auto-approve, acceptEdits and the auto alias as not", () => {
+    expect(ClaudeDriver.getAutoApprove!(ClaudeDriver.decodeConfig({ permissionMode: "bypassPermissions" }))).toBe(true);
+    expect(ClaudeDriver.getAutoApprove!(ClaudeDriver.decodeConfig({ permissionMode: "acceptEdits" }))).toBe(false);
+    expect(ClaudeDriver.getAutoApprove!(ClaudeDriver.decodeConfig({ permissionMode: "auto" }))).toBe(false);
+  });
+
+  it("round-trips through setAutoApprove", () => {
+    const base = ClaudeDriver.decodeConfig({});
+    const on = ClaudeDriver.setAutoApprove!(base, true);
+    expect(on.permissionMode).toBe("bypassPermissions");
+    expect(ClaudeDriver.getAutoApprove!(on)).toBe(true);
+    const off = ClaudeDriver.setAutoApprove!(on, false);
+    expect(off.permissionMode).toBe("acceptEdits");
+    expect(ClaudeDriver.getAutoApprove!(off)).toBe(false);
+  });
+});
+
 posixOnly("ClaudeDriver turns (fake CLI)", () => {
   let instance: ProviderInstance;
   let recorder: EventRecorder;

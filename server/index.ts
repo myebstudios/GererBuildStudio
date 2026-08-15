@@ -1469,6 +1469,29 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { instances: await registry.describe() });
     }
 
+    // ── per-instance auto-approve permission toggle (Settings → Models) ──
+    m = path.match(/^\/api\/instances\/([\w-]+)$/);
+    if (m && method === "PATCH") {
+      const instanceId = m[1];
+      const body = await readBody(req);
+      if (typeof body.autoApprove !== "boolean") return json(res, 400, { error: "autoApprove must be a boolean" });
+      const driverConfig = registry.getDriverConfig(instanceId);
+      if (!driverConfig) return json(res, 404, { error: "no such instance" });
+      const { driver, config } = driverConfig;
+      if (!driver.setAutoApprove) return json(res, 400, { error: "this provider has no configurable permission mode" });
+      const nextConfig = driver.setAutoApprove(config, body.autoApprove);
+      saveConfig({
+        instances: {
+          [instanceId]: { driver: driver.driverKind, ...cfg.instances?.[instanceId], config: nextConfig },
+        },
+      });
+      Object.assign(cfg, loadConfig());
+      await reloadProviders();
+      const instances = await registry.describe();
+      broadcast({ kind: "instances", instances });
+      return json(res, 200, { instances });
+    }
+
     // ── app config (API keys — never echoed back, booleans only) ──
     if (method === "GET" && path === "/api/config") {
       return json(res, 200, configStatus());

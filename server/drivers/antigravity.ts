@@ -77,6 +77,8 @@ export const AntigravityDriver: ProviderDriver<AntigravityConfig> = {
   models: MODELS,
   decodeConfig,
   defaultConfig: () => decodeConfig({}),
+  getAutoApprove: (config) => config.fullAuto,
+  setAutoApprove: (config, autoApprove) => ({ ...config, fullAuto: autoApprove }),
 
   async create(input: DriverCreateInput<AntigravityConfig>): Promise<ProviderInstance> {
     const { instanceId, config } = input;

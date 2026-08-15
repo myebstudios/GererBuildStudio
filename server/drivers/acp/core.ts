@@ -94,6 +94,8 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
     models: support.models,
     decodeConfig,
     defaultConfig: () => decodeConfig({}),
+    getAutoApprove: (config) => config.fullAuto,
+    setAutoApprove: (config, autoApprove) => ({ ...config, fullAuto: autoApprove }),
 
     async create(input: DriverCreateInput<AcpConfig>): Promise<ProviderInstance> {
       const { instanceId, config } = input;

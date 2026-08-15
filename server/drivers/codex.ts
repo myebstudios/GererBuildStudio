@@ -83,6 +83,8 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
   models: MODELS,
   decodeConfig,
   defaultConfig: () => decodeConfig({}),
+  getAutoApprove: (config) => config.fullAuto,
+  setAutoApprove: (config, autoApprove) => ({ ...config, fullAuto: autoApprove }),
 
   async create(input: DriverCreateInput<CodexConfig>): Promise<ProviderInstance> {
     const { instanceId, config } = input;

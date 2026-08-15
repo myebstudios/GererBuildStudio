@@ -1,6 +1,8 @@
 // Config + data dirs. One file, ~/.gbs/config.json, env fallbacks:
 //   { "xai": {"key":"xai-…"}, "composio": {"key":"ck_…"}, "box": {"token":"…"},
 //     "instances": { "<instanceId>": {"driver":"grok", …} } }
+// `instances.<id>` entries are hand-editable but also written by the app
+// itself (e.g. the Settings permission toggle), via saveConfig's per-id merge.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -65,6 +67,13 @@ export function saveConfig(patch: Partial<AppConfig>): void {
     if (patch[key] && typeof patch[key] === "object") {
       disk[key] = { ...(disk[key] as object), ...patch[key] };
     }
+  }
+  if (patch.instances && typeof patch.instances === "object") {
+    const diskInstances = { ...((disk.instances as InstanceConfigMap) ?? {}) };
+    for (const [instanceId, instancePatch] of Object.entries(patch.instances)) {
+      diskInstances[instanceId] = { ...diskInstances[instanceId], ...instancePatch };
+    }
+    disk.instances = diskInstances;
   }
   mkdirSync(DATA_DIR, { recursive: true });
   writeFileSync(p, JSON.stringify(disk, null, 2));

@@ -155,6 +155,8 @@ export interface InstanceInfo {
     version?: string | null;
   };
   models: { default: string; options: Array<{ id: string; label: string }> };
+  /** null when the driver has no configurable permission mode. */
+  autoApprove: boolean | null;
 }
 
 export interface AppState {
@@ -1072,6 +1074,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           break;
         case "bot.deleted":
           rawDispatch({ type: "deleteBot", botId: frame.botId });
+          break;
+        // a permission toggle (or other instance edit) hot-reloaded the fleet
+        case "instances":
+          rawDispatch({ type: "instances", instances: frame.instances });
           break;
         // a key changed and the fleet hot-reloaded — refresh the picker so
         // newly available providers un-dim immediately

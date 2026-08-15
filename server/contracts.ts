@@ -198,6 +198,10 @@ export interface ProviderDriver<Config = unknown> {
   defaultConfig(): Config;
   readonly models: ModelCatalog;
   create(input: DriverCreateInput<Config>): Promise<ProviderInstance>;
+  /** Unified auto-approve toggle (Settings UI). Omit on drivers with no
+   * permission concept — the UI then hides the control for that instance. */
+  getAutoApprove?(config: Config): boolean;
+  setAutoApprove?(config: Config, autoApprove: boolean): Config;
 }
 
 export type AnyProviderDriver = ProviderDriver<any>;

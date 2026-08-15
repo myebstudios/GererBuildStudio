@@ -80,6 +80,16 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
             environment: { FAKE_ACP_MODE: "hang" },
             config: { cli: FAKE_CLI, fullAuto: true },
           },
+          historyA: {
+            driver: "grokAgent",
+            environment: { FAKE_ACP_MODE: "echo-context" },
+            config: { cli: FAKE_CLI, fullAuto: true },
+          },
+          historyB: {
+            driver: "grokAgent",
+            environment: { FAKE_ACP_MODE: "echo-context" },
+            config: { cli: FAKE_CLI, fullAuto: true },
+          },
         },
       }),
     );
@@ -119,6 +129,41 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
     });
     rmSync(home, { recursive: true, force: true });
   });
+
+  it(
+    "replays active history into a fresh session after switching models",
+    async () => {
+      const created = (await api("POST", "/api/bots")).body.bot;
+      await api("PATCH", `/api/bots/${created.id}`, {
+        modelSelection: { instanceId: "historyA", model: "grok-4.6" },
+      });
+
+      expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "first model question" })).status).toBe(202);
+      await waitFor(async () => {
+        const bot = await getBot(created.id);
+        return !bot.busy && bot.messages.some((m: Msg) => m.role === "bot" && m.text?.includes("first model question"));
+      }, "the first contextual reply");
+
+      await api("PATCH", `/api/bots/${created.id}`, {
+        modelSelection: { instanceId: "historyB", model: "grok-4.5" },
+      });
+      expect((await api("POST", `/api/bots/${created.id}/messages`, { text: "second model question" })).status).toBe(202);
+
+      await waitFor(async () => {
+        const bot = await getBot(created.id);
+        return !bot.busy && bot.messages.some(
+          (m: Msg) => m.role === "bot" && m.text?.includes("second model question") && m.text?.includes("first model question"),
+        );
+      }, "the replayed contextual reply");
+
+      const bot = await getBot(created.id);
+      const reply = [...bot.messages].reverse().find((m: Msg) => m.role === "bot" && m.text?.includes("second model question"));
+      expect(reply?.text).toContain("Continue this conversation using the following prior history");
+      expect(reply?.text).toContain("User: first model question");
+      expect(reply?.text).toContain("[Now reply to the user's latest message:]");
+    },
+    40_000,
+  );
 
   it(
     "forks on edit, replies on the new branch, and switches versions cleanly",

@@ -14,7 +14,7 @@ import * as trello from "./trello.ts";
 import { TrelloLinkStore } from "./trelloLinks.ts";
 import { TrelloSync } from "./trelloSync.ts";
 import { ensureDirs, instanceConfigs, loadConfig, saveConfig, DATA_DIR, EVENTS_DIR, NATIVE_DIR } from "./config.ts";
-import type { RuntimeEvent } from "./contracts.ts";
+import type { ModelSelection, RuntimeEvent } from "./contracts.ts";
 
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.ts";
 import { EventBus } from "./harness/bus.ts";
@@ -437,19 +437,20 @@ async function startTurn(
       return { role: m.role === "user" ? ("user" as const) : ("assistant" as const), text: `${m.text || ""}${attSummary}`.trim() };
     });
 
-  // After a rewind (edit / branch switch) the provider's native session
-  // still contains the abandoned branch: start a fresh session instead of
-  // resuming, and for cursor-resuming drivers replay the surviving path
-  // inline (transcript-replay drivers get it via transcript). The flag is
-  // cleared only once the turn is actually dispatched — clearing it here
+  // After a rewind (edit / branch switch), or after selecting a different
+  // model, the provider's native session cannot be trusted to represent the
+  // active conversation. Start fresh and replay the visible path inline for
+  // cursor-resuming drivers; transcript-replay drivers get it via transcript.
+  // The rewind flag is cleared only once dispatch succeeds — clearing it here
   // would cost the next attempt its history if this dispatch fails.
   const rewound = Boolean(bot.rewound);
+  const resumeCursor = rewound ? undefined : bot.resumeCursors[bot.modelSelection.instanceId];
   const attPrompt = formatAttachmentContext(userMessage.attachments);
   const promptBody = [text, attPrompt].filter(Boolean).join("\n\n");
   const turnText =
-    rewound && instance.driverKind !== "grok" && transcript.length
+    instance.driverKind !== "grok" && !resumeCursor && transcript.length
       ? [
-          "[The user rewound this conversation (edited a message or switched to another version). Everything before this point was replaced by the following history:]",
+          "[Continue this conversation using the following prior history. It was replayed because this is a fresh model session:]",
           "",
           ...transcript.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`),
           "",
@@ -525,7 +526,7 @@ async function startTurn(
         attachments: userMessage.attachments,
         model: bot.modelSelection.model,
         // a rewound thread never resumes the abandoned branch's session
-        resumeCursor: rewound ? undefined : bot.resumeCursors[bot.modelSelection.instanceId],
+        resumeCursor,
         transcript,
         system:
           persona +
@@ -1338,6 +1339,18 @@ const server = createServer(async (req, res) => {
       const patch: Record<string, unknown> = {};
       for (const key of ["name", "title", "description", "notifications", "modelSelection", "unread", "computer", "color", "mascotExpression", "pinned", "hidden"] as const) {
         if (body[key] !== undefined) patch[key] = body[key];
+      }
+      const current = store.bot(m[1]);
+      if (!current) return json(res, 404, { error: "no such bot" });
+      const nextSelection = patch.modelSelection as ModelSelection | undefined;
+      if (
+        nextSelection &&
+        (nextSelection.instanceId !== current.modelSelection.instanceId || nextSelection.model !== current.modelSelection.model)
+      ) {
+        // Native sessions are model-specific. Dropping their cursors makes
+        // the next turn start under the selected model; startTurn replays the
+        // active local transcript so switching never loses chat context.
+        patch.resumeCursors = {};
       }
       const bot = store.patchBot(m[1], patch);
       if (!bot) return json(res, 404, { error: "no such bot" });

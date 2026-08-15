@@ -30,6 +30,8 @@ export interface TaskAssignee {
 
 export interface TaskRecord {
   id: string;
+  /** Stable %mention slug, e.g. "fix-qt6-styling". */
+  mention: string;
   title: string;
   description: string;
   acceptanceCriteria: string[];

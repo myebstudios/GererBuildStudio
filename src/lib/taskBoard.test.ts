@@ -9,6 +9,7 @@ import {
 
 const task = (patch: Partial<TaskRecord>): TaskRecord => ({
   id: "one",
+  mention: "fix-agent-claim",
   title: "Fix agent claim",
   description: "Prevent races",
   acceptanceCriteria: ["One winner"],

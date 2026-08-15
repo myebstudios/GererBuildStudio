@@ -22,6 +22,7 @@ import { ProviderRegistry } from "./harness/registry.ts";
 import { automaticHandoffBots, mentionedBots, Store, type Attachment, type Message } from "./store.ts";
 import { readRegisteredProjects, resolveProjectContext } from "./projects.ts";
 import {
+  resolveTaskContext,
   TaskConflictError,
   TaskStore,
   type CreateTaskInput,
@@ -466,6 +467,7 @@ async function startTurn(
     .filter(Boolean)
     .join(" ");
   const projectContext = resolveProjectContext([text, bot.description]);
+  const taskContext = resolveTaskContext([text, bot.description], taskStore.list());
 
   // busy flips immediately so the composer locks; the dispatch itself runs
   // in the background — box provisioning can take ~90s and must never
@@ -528,6 +530,7 @@ async function startTurn(
         system:
           persona +
           (projectContext.system ? `\n\n${projectContext.system}` : "") +
+          (taskContext.system ? `\n\n${taskContext.system}` : "") +
           (integrations.computer && instance.driverKind !== "boxAgent"
             ? " You have your own cloud computer — use the computer tools (screenshot, computer_exec, open_url) whenever browsing or acting on a desktop helps."
             : integrations.localComputer
@@ -667,6 +670,7 @@ async function runGroupMemberTurn(
   const latestUserText = latestUserMessage?.text ?? "";
   const attPrompt = formatAttachmentContext(latestUserMessage?.attachments);
   const projectContext = resolveProjectContext([latestUserText, group.bulletin, bot.description]);
+  const taskContext = resolveTaskContext([latestUserText, group.bulletin, bot.description], taskStore.list());
   const system = [
     `You are ${bot.name}, a bot in the room "${group.name}" in Gerer Build Studio.`,
     bot.title && `Role: ${bot.title}.`,
@@ -674,6 +678,7 @@ async function runGroupMemberTurn(
     `Room members: ${roster}, and ${userName} (the human).`,
     group.bulletin.trim() && `Room bulletin (shared instructions for everyone):\n${group.bulletin.trim()}`,
     projectContext.system,
+    taskContext.system,
     `Reply as yourself, briefly and conversationally. To bring a teammate in, mention them like @Name — they'll see the conversation and respond.`,
   ]
     .filter(Boolean)

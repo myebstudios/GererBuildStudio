@@ -9,7 +9,10 @@ import {
   TaskStore,
   TaskValidationError,
   filterTasks,
+  mentionedTasks,
+  resolveTaskContext,
   type TaskActor,
+  type TaskRecord,
 } from "./tasks.ts";
 
 const roots: string[] = [];
@@ -198,5 +201,93 @@ describe("TaskStore", () => {
       overdue: true,
     }, Date.now())).toEqual([claimed]);
     expect(store.list({ assigneeBotId: null })).toHaveLength(1);
+  });
+
+  it("generates a stable %mention slug from the title and dedupes collisions", () => {
+    const { store } = fixture();
+    const a = store.create({ title: "Fix Qt6 QML styling!" }, user);
+    const b = store.create({ title: "Fix Qt6 QML styling!" }, user);
+    const c = store.create({ title: "Fix Qt6 QML styling!" }, user);
+    expect(a.mention).toBe("fix-qt6-qml-styling");
+    expect(b.mention).toBe("fix-qt6-qml-styling-2");
+    expect(c.mention).toBe("fix-qt6-qml-styling-3");
+
+    const empty = store.create({ title: "!!!" }, user);
+    expect(empty.mention).toBe("task");
+  });
+
+  it("does not regenerate a mention when the title is edited later", () => {
+    const { store } = fixture();
+    const task = store.create({ title: "Original title" }, user);
+    const updated = store.update(task.id, task.revision, { title: "Renamed" }, user);
+    expect(updated.mention).toBe(task.mention);
+  });
+
+  it("backfills mentions for legacy tasks that predate the field, and persists it", () => {
+    const { root } = fixture();
+    const legacy = {
+      id: "legacy-one",
+      title: "Legacy task",
+      description: "",
+      acceptanceCriteria: [],
+      status: "todo",
+      type: "feature",
+      priority: "normal",
+      tags: [],
+      dueAt: null,
+      projectId: null,
+      assigneeBotId: null,
+      position: 1024,
+      revision: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      createdBy: user,
+      updatedBy: user,
+      activity: [],
+      trelloCardId: null,
+      trelloCardUrl: null,
+      // no `mention` field — simulates a save from before this feature
+    };
+    writeFileSync(join(root, "tasks.json"), JSON.stringify([legacy]));
+
+    const reloaded = new TaskStore(root).get("legacy-one");
+    expect(reloaded?.mention).toBe("legacy-task");
+
+    const onDisk = JSON.parse(readFileSync(join(root, "tasks.json"), "utf8"));
+    expect(onDisk[0].mention).toBe("legacy-task");
+  });
+});
+
+function task(patch: Partial<TaskRecord>): TaskRecord {
+  return {
+    id: "id", mention: "task", title: "Task", description: "", acceptanceCriteria: [],
+    status: "todo", type: "feature", priority: "normal", tags: [], dueAt: null,
+    projectId: null, assigneeBotId: null, position: 1024, revision: 1,
+    createdAt: 1, updatedAt: 1, createdBy: user, updatedBy: user, activity: [],
+    trelloCardId: null, trelloCardUrl: null,
+    ...patch,
+  };
+}
+
+describe("mentionedTasks", () => {
+  it("uses exact, case-insensitive boundaries and deduplicates", () => {
+    const tasks = [task({ id: "one", mention: "fix-login" }), task({ id: "two", mention: "ship-docs" })];
+    expect(mentionedTasks("%Fix-Login, %ship-docs %fix-login", tasks).map((t) => t.id)).toEqual(["one", "two"]);
+    expect(mentionedTasks("50%fix-login %general %fix-login-extra", tasks)).toEqual([]);
+  });
+});
+
+describe("resolveTaskContext", () => {
+  it("uses the first source with known references", () => {
+    const tasks = [task({ id: "one", mention: "fix-login", title: "Fix login", status: "doing" })];
+    const context = resolveTaskContext(["latest %fix-login", "default %missing"], tasks);
+    expect(context.tasks.map((t) => t.id)).toEqual(["one"]);
+    expect(context.system).toContain("%fix-login");
+    expect(context.system).toContain("status: doing");
+  });
+
+  it("returns empty context when nothing matches", () => {
+    const tasks = [task({ mention: "fix-login" })];
+    expect(resolveTaskContext(["no mentions here"], tasks)).toEqual({ tasks: [], system: "" });
   });
 });

@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { MausAvatar } from "./Avatar";
 import { normalizeState } from "@/lib/mascot";
 import { insertProjectMention, projectMentionQueryAt } from "@/lib/projectMentions";
+import { insertTaskMention, taskMentionQueryAt } from "@/lib/taskMentions";
 import { useProjects } from "@/state/projects";
 import { ProjectSuggestionList } from "./ProjectSuggestionList";
 import { StagedAttachmentsTray } from "./AttachmentViewer";
@@ -58,8 +59,18 @@ export function Composer({
   // ── @mention picker (tag another bot; the agent reaches it via ask_bot) ──
   const botMention = mentionQueryAt(text, caret);
   const projectMention = projectMentionQueryAt(text, caret);
-  const mentionKind = projectMention && (!botMention || projectMention.start > botMention.start) ? "project" : "bot";
-  const mention = mentionKind === "project" ? projectMention : botMention;
+  const taskMention = taskMentionQueryAt(text, caret);
+  // whichever trigger sits closest to the caret wins (matches typing order)
+  const mentionKind: "bot" | "project" | "task" = (() => {
+    const present: Array<readonly ["bot" | "project" | "task", number]> = [
+      ...(botMention ? ([["bot", botMention.start]] as const) : []),
+      ...(projectMention ? ([["project", projectMention.start]] as const) : []),
+      ...(taskMention ? ([["task", taskMention.start]] as const) : []),
+    ];
+    if (!present.length) return "bot";
+    return present.reduce((best, cur) => (cur[1] > best[1] ? cur : best))[0];
+  })();
+  const mention = mentionKind === "project" ? projectMention : mentionKind === "task" ? taskMention : botMention;
   const botCandidates = useMemo(() => {
     if (mentionKind !== "bot" || !botMention || dismissed === `bot:${botMention.start}`) return [];
     const pool = group ? (members ?? []) : state.bots.filter((b) => b.id !== bot?.id && !b.hidden);
@@ -76,7 +87,15 @@ export function Composer({
       .filter((project) => !q || project.mention.includes(q) || project.name.toLowerCase().includes(q))
       .slice(0, 6);
   }, [dismissed, mentionKind, projectMention, projects]);
-  const candidateCount = mentionKind === "project" ? projectCandidates.length : botCandidates.length;
+  const taskCandidates = useMemo(() => {
+    if (mentionKind !== "task" || !taskMention || dismissed === `task:${taskMention.start}`) return [];
+    const q = taskMention.query.toLowerCase();
+    return state.tasks
+      .filter((task) => !q || task.mention.includes(q) || task.title.toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [dismissed, mentionKind, taskMention, state.tasks]);
+  const candidateCount =
+    mentionKind === "project" ? projectCandidates.length : mentionKind === "task" ? taskCandidates.length : botCandidates.length;
   const pickerOpen = candidateCount > 0;
 
   useEffect(() => setHighlight(0), [mention?.start, mention?.query]);
@@ -110,6 +129,18 @@ export function Composer({
     setText(next.text);
     setCaret(next.caret);
     setDismissed(`project:${projectMention.start}`);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.caret, next.caret);
+    });
+  };
+
+  const pickTaskMention = (taskMentionHandle: string) => {
+    if (!taskMention) return;
+    const next = insertTaskMention(text, caret, taskMention, taskMentionHandle);
+    setText(next.text);
+    setCaret(next.caret);
+    setDismissed(`task:${taskMention.start}`);
     requestAnimationFrame(() => {
       inputRef.current?.focus();
       inputRef.current?.setSelectionRange(next.caret, next.caret);
@@ -295,6 +326,30 @@ export function Composer({
             className="absolute bottom-full left-2 mb-2"
           />
         )}
+        {pickerOpen && mentionKind === "task" && (
+          <div
+            role="listbox"
+            aria-label="Reference a task"
+            className="absolute bottom-full left-2 z-20 mb-2 w-72 overflow-hidden rounded-xl border border-hairline/40 bg-raised shadow-lg"
+          >
+            {taskCandidates.map((task, i) => (
+              <button
+                key={task.id}
+                role="option"
+                aria-selected={i === highlight}
+                onClick={() => pickTaskMention(task.mention)}
+                onMouseEnter={() => setHighlight(i)}
+                className={cn(
+                  "flex w-full items-center gap-2.5 px-3 py-2 text-left",
+                  i === highlight ? "bg-raised-hover" : "",
+                )}
+              >
+                <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{task.title}</span>
+                <span className="shrink-0 text-xs text-ink-secondary capitalize">{task.status}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {pickerOpen && mentionKind === "bot" && (
           <div
             role="listbox"
@@ -358,6 +413,7 @@ export function Composer({
               if (e.key === "Enter" || e.key === "Tab") {
                 e.preventDefault();
                 if (mentionKind === "project") pickProjectMention(projectCandidates[highlight].mention);
+                else if (mentionKind === "task") pickTaskMention(taskCandidates[highlight].mention);
                 else pickBotMention(botCandidates[highlight]);
                 return;
               }

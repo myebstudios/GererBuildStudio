@@ -108,6 +108,7 @@ describe("automatic room handoffs", () => {
 describe("shared task board state", () => {
   const task = (revision: number): TaskRecord => ({
     id: "task-one",
+    mention: "task-one",
     title: `Task revision ${revision}`,
     description: "",
     acceptanceCriteria: [],

@@ -29,6 +29,10 @@ export interface TaskActivity {
 
 export interface TaskRecord {
   id: string;
+  /** Stable %mention slug, derived from the title at creation time and never
+   * regenerated on edit — so an old %slug reference in chat history keeps
+   * resolving to the same task even after a rename. */
+  mention: string;
   title: string;
   description: string;
   acceptanceCriteria: string[];
@@ -51,6 +55,29 @@ export interface TaskRecord {
    * never accepted through CreateTaskInput/UpdateTaskInput. */
   trelloCardId: string | null;
   trelloCardUrl: string | null;
+}
+
+const MENTION_PATTERN = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;
+
+/** lowercase, non-alphanumeric runs -> "-", trimmed, capped; "task" if empty. */
+function slugify(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/g, "");
+  return slug || "task";
+}
+
+/** Slugify + auto-suffix ("-2", "-3", …) against mentions already in use. */
+function uniqueMention(title: string, taken: Set<string>): string {
+  const base = slugify(title);
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
 }
 
 export interface TaskFilters {
@@ -178,6 +205,7 @@ function validateSavedTask(value: unknown): TaskRecord {
   const task = value as Record<string, unknown>;
   const valid =
     typeof task.id === "string" &&
+    (task.mention === undefined || (typeof task.mention === "string" && MENTION_PATTERN.test(task.mention))) &&
     typeof task.title === "string" && task.title.length > 0 &&
     typeof task.description === "string" &&
     Array.isArray(task.acceptanceCriteria) && task.acceptanceCriteria.every((item) => typeof item === "string") &&
@@ -200,6 +228,10 @@ function validateSavedTask(value: unknown): TaskRecord {
   if (!valid) throw new TaskValidationError("Saved task data is invalid. The file was left unchanged.");
   return {
     ...(task as unknown as TaskRecord),
+    // "" is a backfill marker for legacy saves predating `mention` — filled
+    // in by reloadIfChanged() once the full task list is in hand (dedup
+    // needs siblings), never persisted as an empty string.
+    mention: (task.mention as string | undefined) ?? "",
     trelloCardId: (task.trelloCardId as string | null | undefined) ?? null,
     trelloCardUrl: (task.trelloCardUrl as string | null | undefined) ?? null,
   };
@@ -241,6 +273,55 @@ export function filterTasks(tasks: TaskRecord[], filters: TaskFilters, now = Dat
   }).sort(compareTasks);
 }
 
+/** Reverse-match: %mention text -> known tasks, mirroring server/projects.ts's mentionedProjects. */
+export function mentionedTasks(text: string, tasks: TaskRecord[]): TaskRecord[] {
+  const byMention = new Map(tasks.map((task) => [task.mention, task]));
+  const seen = new Set<string>();
+  const referenced: TaskRecord[] = [];
+  for (const match of text.matchAll(/%[a-z0-9][a-z0-9._-]*/gi)) {
+    const start = match.index;
+    if (start > 0 && /[a-z0-9_#@%]/i.test(text[start - 1])) continue;
+    const handle = match[0].replace(/[._-]+$/, "").slice(1).toLowerCase();
+    const task = byMention.get(handle);
+    if (!task || seen.has(task.id)) continue;
+    seen.add(task.id);
+    referenced.push(task);
+  }
+  return referenced;
+}
+
+export interface TaskMentionContext {
+  tasks: TaskRecord[];
+  system: string;
+}
+
+/** Sources are ordered from highest to lowest priority. The first source
+ * containing known task references owns the turn's task context. */
+export function resolveTaskContext(sources: string[], tasks: TaskRecord[]): TaskMentionContext {
+  let referenced: TaskRecord[] = [];
+  for (const source of sources) {
+    referenced = mentionedTasks(source, tasks);
+    if (referenced.length > 0) break;
+  }
+  if (referenced.length === 0) return { tasks: [], system: "" };
+
+  const lines = referenced.map((task) => {
+    const description = task.description.length > 500 ? `${task.description.slice(0, 500)}…` : task.description;
+    return [
+      `- %${task.mention} — "${task.title}" (status: ${task.status}, priority: ${task.priority})`,
+      description ? `  ${description}` : null,
+    ].filter(Boolean).join("\n");
+  });
+  return {
+    tasks: referenced,
+    system: [
+      "Trusted task references from the user's task board:",
+      ...lines,
+      "Use this as ground truth for the referenced tasks; do not infer their status or content from other text.",
+    ].join("\n"),
+  };
+}
+
 export class TaskStore {
   readonly filePath: string;
   tasks: TaskRecord[];
@@ -278,8 +359,17 @@ export class TaskStore {
       if (before !== after) continue;
       if (!Array.isArray(parsed)) throw new TaskValidationError("Saved task data is invalid. The file was left unchanged.");
       const tasks = parsed.map(validateSavedTask).sort(compareTasks);
+      const taken = new Set(tasks.map((task) => task.mention).filter(Boolean));
+      let backfilled = false;
+      for (const task of tasks) {
+        if (task.mention) continue;
+        task.mention = uniqueMention(task.title, taken);
+        taken.add(task.mention);
+        backfilled = true;
+      }
       this.tasks = tasks;
       this.fileStamp = after;
+      if (backfilled) this.save();
       return true;
     }
     throw new TaskValidationError("Task data changed while it was being loaded. Try again.");
@@ -320,9 +410,11 @@ export class TaskStore {
     if (!isType(type)) throw new TaskValidationError("Task type is invalid.");
     if (!isPriority(priority)) throw new TaskValidationError("Task priority is invalid.");
     const now = Date.now();
+    const title = cleanText(input.title, "Title", 200, true);
     const task: TaskRecord = {
       id: newId(),
-      title: cleanText(input.title, "Title", 200, true),
+      mention: uniqueMention(title, new Set(this.tasks.map((t) => t.mention))),
+      title,
       description: cleanText(input.description, "Description", 20_000),
       acceptanceCriteria: cleanCriteria(input.acceptanceCriteria),
       status,

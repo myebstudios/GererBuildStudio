@@ -46,7 +46,6 @@ function StatusRow({
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
-  const [authSubStep, setAuthSubStep] = useState<"auth" | "local">("auth");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [instances, setInstances] = useState<InstanceRow[] | null>(null);
@@ -56,22 +55,20 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const sanitizedLocalName = name.trim().replace(/\s+/g, " ");
   const validLocalName = sanitizedLocalName.length > 0;
 
-  const saveProfile = (mode: "auth" | "local") => {
+  const saveProfile = (_mode: "auth" | "local" = "local") => {
     setIsSubmitting(true);
-    if (mode === "auth") {
+    if (validEmail) {
       identifyEmail(email.trim().toLowerCase());
     }
     setEmailGateDone("submitted");
-    const cleanName = mode === "local" ? sanitizedLocalName : (sanitizedLocalName || email.trim().split("@")[0] || "User");
-    // persisted server-side (~/.gbs/config.json) — the sidebar
-    // footer reads it back through /api/config
+    const cleanName = sanitizedLocalName || (validEmail ? email.trim().split("@")[0]! : "User");
     void fetch("/api/config", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         profile: {
           name: cleanName,
-          email: mode === "auth" ? email.trim().toLowerCase() : "",
+          email: validEmail ? email.trim().toLowerCase() : "",
         },
       }),
     })
@@ -89,7 +86,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   };
 
   useEffect(() => {
-    track("onboarding_step", { step, authSubStep });
+    track("onboarding_step", { step });
     if (step === 1 && !instances) {
       fetch("/api/instances")
         .then((r) => r.json())
@@ -99,11 +96,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     if (step === 2 && isElectron) {
       const poll = () => window.gbs?.permStatus?.().then(setPerms).catch(() => {});
       poll();
-      // keep polling — the user may grant in System Settings and come back
       const t = setInterval(poll, 2000);
       return () => clearInterval(t);
     }
-  }, [step, authSubStep, instances]);
+  }, [step, instances]);
 
   const finish = () => {
     track("onboarding_completed", {
@@ -123,108 +119,49 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-app">
       <div className="flex w-[460px] flex-col rounded-2xl border border-hairline/40 bg-panel p-8">
-        {step === 0 && authSubStep === "auth" && (
+        {step === 0 && (
           <div className="flex flex-col items-center">
             <MausAvatar color="green" state="happy" size={72} />
-            <h1 className="mt-4 text-center text-[20px] font-semibold text-ink">Welcome to Gerer Build Studio</h1>
-            <p className="mt-1.5 text-center text-[13.5px] leading-relaxed text-ink-secondary">
-              Add your email to keep this profile with you — cloud sync of your bot fleet and settings across
-              devices is coming soon.
+            <h1 className="mt-4 text-[20px] font-semibold text-ink">Welcome to Gerer Build Studio</h1>
+            <p className="mt-1.5 text-center text-[14px] leading-relaxed text-ink-secondary">
+              Bots that do real work on their own computer. Tell us who you are
+              and we&rsquo;ll let you know when big things ship.
             </p>
-
-            <div className="mt-5 w-full space-y-3">
-              <div>
-                <label className="mb-1 block text-[12px] font-medium text-ink-secondary">Account Email</label>
-                <input
-                  autoFocus
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && validEmail && saveProfile("auth")}
-                  placeholder="you@example.com"
-                  className="w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-secondary focus:border-accent focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={() => saveProfile("auth")}
-              disabled={!validEmail || isSubmitting}
-              className="mt-5 flex items-center justify-center gap-2 w-full rounded-lg bg-accent py-2.5 text-[14.5px] font-medium text-white disabled:opacity-40 hover:brightness-110 transition-all"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" /> Saving…
-                </>
-              ) : (
-                "Continue with Email"
-              )}
-            </button>
-
-            <button
-              onClick={() => setAuthSubStep("local")}
-              disabled={isSubmitting}
-              className="mt-3 text-[13px] font-medium text-accent hover:underline disabled:opacity-50"
-            >
-              Continue with Local-Only Profile
-            </button>
-
-            <div className="mt-5 border-t border-hairline/30 pt-3 text-center text-[11px] leading-relaxed text-ink-secondary">
-              100% Local-First: Your chat history, prompt logs, and project code stay strictly on this machine.
-            </div>
-          </div>
-        )}
-
-        {step === 0 && authSubStep === "local" && (
-          <div className="flex flex-col items-center">
-            <MausAvatar color="blue" state="happy" size={72} />
-            <h1 className="mt-4 text-center text-[20px] font-semibold text-ink">Set Up Your Local Profile</h1>
-            <p className="mt-1.5 text-center text-[13.5px] leading-relaxed text-ink-secondary">
-              Enter a display name to identify your local session. No account or email required—your work remains strictly local.
-            </p>
-
-            <div className="mt-5 w-full">
-              <label className="mb-1 block text-[12px] font-medium text-ink-secondary">Display Name</label>
-              <input
-                autoFocus
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && validLocalName && !isSubmitting && saveProfile("local")}
-                placeholder="e.g. Alex Doe"
-                className="w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-secondary focus:border-accent focus:outline-none"
-              />
-            </div>
-
+            <input
+              autoFocus
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+              className="mt-5 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[15px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
+            />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && (validEmail || validLocalName) && saveProfile("local")}
+              placeholder="you@example.com"
+              className="mt-3 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[15px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
+            />
             <button
               onClick={() => saveProfile("local")}
-              disabled={!validLocalName || isSubmitting}
-              className="mt-5 flex items-center justify-center gap-2 w-full rounded-lg bg-accent py-2.5 text-[14.5px] font-medium text-white disabled:opacity-40 hover:brightness-110 transition-all"
+              disabled={(!validEmail && !validLocalName) || isSubmitting}
+              className="mt-5 flex items-center justify-center gap-2 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white disabled:opacity-40 hover:brightness-110 transition-all"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 size={16} className="animate-spin" /> Saving…
                 </>
               ) : (
-                "Start Working Locally"
+                "Continue"
               )}
             </button>
-
-            <div className="mt-3 flex items-center gap-3">
-              <button
-                onClick={() => setAuthSubStep("auth")}
-                className="text-[12.5px] text-ink-secondary hover:text-ink"
-              >
-                ← Return to Account Sign-In
-              </button>
-              <span className="text-hairline">•</span>
-              <button
-                onClick={skipAll}
-                className="text-[12.5px] text-ink-secondary hover:text-ink"
-              >
-                Skip for now
-              </button>
-            </div>
+            <button
+              onClick={skipAll}
+              className="mt-3 text-[12px] text-ink-secondary hover:text-ink"
+            >
+              Skip for now
+            </button>
           </div>
         )}
 

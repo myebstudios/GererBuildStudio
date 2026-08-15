@@ -1,6 +1,8 @@
 // Config + data dirs. One file, ~/.gbs/config.json, env fallbacks:
 //   { "xai": {"key":"xai-…"}, "composio": {"key":"ck_…"}, "box": {"token":"…"},
 //     "instances": { "<instanceId>": {"driver":"grok", …} } }
+// `instances.<id>` entries are hand-editable but also written by the app
+// itself (e.g. the Settings permission toggle), via saveConfig's per-id merge.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -26,6 +28,7 @@ export function loadConfig() {
     cfg.xai = { key: process.env.XAI_API_KEY, ...cfg.xai };
     cfg.composio = { key: process.env.COMPOSIO_KEY, ...cfg.composio };
     cfg.box = { token: process.env.BOX_TOKEN, ...cfg.box };
+    cfg.trello = { key: process.env.TRELLO_API_KEY, ...cfg.trello };
     return cfg;
 }
 /** Merge a partial config into ~/.gbs/config.json (secrets never
@@ -39,10 +42,17 @@ export function saveConfig(patch) {
     catch {
         /* first write */
     }
-    for (const key of ["xai", "composio", "box", "profile"]) {
+    for (const key of ["xai", "composio", "box", "trello", "profile"]) {
         if (patch[key] && typeof patch[key] === "object") {
             disk[key] = { ...disk[key], ...patch[key] };
         }
+    }
+    if (patch.instances && typeof patch.instances === "object") {
+        const diskInstances = { ...(disk.instances ?? {}) };
+        for (const [instanceId, instancePatch] of Object.entries(patch.instances)) {
+            diskInstances[instanceId] = { ...diskInstances[instanceId], ...instancePatch };
+        }
+        disk.instances = diskInstances;
     }
     mkdirSync(DATA_DIR, { recursive: true });
     writeFileSync(p, JSON.stringify(disk, null, 2));

@@ -31,6 +31,26 @@ function decodeConfig(raw) {
         fullAuto: o.fullAuto === true,
     };
 }
+// Codex's app-server has no per-thread "mcpServers" RPC param (unlike ACP's
+// session/new) — MCP servers only come from ~/.codex/config.toml. `-c
+// key=value` (TOML-parsed) overrides that config for just this spawned
+// process without ever touching the file on disk, so a per-turn server
+// (the agents-proxy, with its per-boot bearer token) can still be injected
+// safely. Verified against codex-cli 0.147.0 via mcpServerStatus/list.
+const tomlString = (value) => JSON.stringify(value);
+const tomlArray = (values) => `[${values.map(tomlString).join(",")}]`;
+const tomlInlineTable = (entries) => `{${Object.entries(entries).map(([k, v]) => `${k}=${tomlString(v)}`).join(",")}}`;
+/** Namespaced (not just "agents") so a `-c` override can never collide with
+ * an MCP server the user has genuinely configured under that name. */
+const AGENTS_MCP_KEY = "gbs_agents";
+function agentsConfigOverrides(agents) {
+    const flags = ["-c", `mcp_servers.${AGENTS_MCP_KEY}.command=${tomlString(agents.command)}`];
+    if (agents.args.length)
+        flags.push("-c", `mcp_servers.${AGENTS_MCP_KEY}.args=${tomlArray(agents.args)}`);
+    if (Object.keys(agents.env).length)
+        flags.push("-c", `mcp_servers.${AGENTS_MCP_KEY}.env=${tomlInlineTable(agents.env)}`);
+    return flags;
+}
 const QUESTION_TIMEOUT_NOTE = "No answer was given — use your best judgment.";
 const DENY_TIMEOUT_NOTE = "Gerer Build Studio: nobody answered this permission request in time. Skip this action and finish what you can without it.";
 export const CodexDriver = {
@@ -39,6 +59,8 @@ export const CodexDriver = {
     models: MODELS,
     decodeConfig,
     defaultConfig: () => decodeConfig({}),
+    getAutoApprove: (config) => config.fullAuto,
+    setAutoApprove: (config, autoApprove) => ({ ...config, fullAuto: autoApprove }),
     async create(input) {
         const { instanceId, config } = input;
         const listeners = new Set();
@@ -63,7 +85,8 @@ export const CodexDriver = {
             // the CLI owns its own ChatGPT login; a leaked API key silently flips
             // billing to pay-as-you-go (agentcal)
             delete env.OPENAI_API_KEY;
-            const child = spawnCli(config.cli, ["app-server"], {
+            const appServerArgs = ["app-server", ...(turn.integrations?.agents ? agentsConfigOverrides(turn.integrations.agents) : [])];
+            const child = spawnCli(config.cli, appServerArgs, {
                 cwd: turn.cwd ?? homedir(),
                 env,
                 stdio: ["pipe", "pipe", "pipe"],
@@ -359,7 +382,7 @@ export const CodexDriver = {
             snapshot,
             adapter: {
                 provider: DRIVER_KIND,
-                capabilities: { sessionModelSwitch: "unsupported" },
+                capabilities: { sessionModelSwitch: "unsupported", agentsMcp: true },
                 sendTurn,
                 interruptTurn: async (threadId) => active.get(threadId)?.stop(),
                 respondToRequest: async (threadId, requestId, decision) => {

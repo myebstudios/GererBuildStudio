@@ -174,6 +174,11 @@ export const ClaudeDriver = {
     models: MODELS,
     decodeConfig,
     defaultConfig: () => decodeConfig({}),
+    getAutoApprove: (config) => config.permissionMode === "bypassPermissions",
+    setAutoApprove: (config, autoApprove) => ({
+        ...config,
+        permissionMode: autoApprove ? "bypassPermissions" : "acceptEdits",
+    }),
     async create(input) {
         const { instanceId, config } = input;
         const listeners = new Set();

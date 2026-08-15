@@ -27,6 +27,7 @@
   "dependencies": {
     "@trycua/cua-driver": "^0.19.3",
     "clsx": "^2.1.1",
+    "convex": "^1.44.0",
     "lucide-react": "^0.539.0",
     "posthog-js": "^1.415.6",
     "react": "^19.1.0",

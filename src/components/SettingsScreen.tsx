@@ -5,6 +5,8 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
+  Cloud,
+  CloudOff,
   Cpu,
   Download,
   ExternalLink,
@@ -13,6 +15,9 @@ import {
   Key,
   Keyboard,
   Loader2,
+  Lock,
+  LogIn,
+  LogOut,
   RefreshCw,
   RotateCw,
   Server,
@@ -30,7 +35,7 @@ import { InitialsAvatar } from "./Avatar";
 import { ApiKeyRow } from "./ApiKeys";
 import { useUpdaterState } from "@/lib/updater";
 
-export type SettingsTab = "profile" | "connections" | "models" | "system";
+export type SettingsTab = "profile" | "connections" | "sync" | "models" | "system";
 
 function profileInitials(profile?: { name?: string; email?: string }): string {
   const name = profile?.name?.trim();
@@ -306,6 +311,252 @@ function ConnectionsSection() {
   );
 }
 
+function SyncSection() {
+  const { state } = useStore();
+  // Preview UI only — there is no live sync backend wired up yet, so this
+  // never derives "signed in" from local profile state (that would falsely
+  // claim data is already syncing to the cloud).
+  const [signedIn, setSignedIn] = useState(false);
+  const [email, setEmail] = useState(() => state.config?.profile?.email ?? "");
+  const [passphrase, setPassphrase] = useState("");
+  const [authenticating, setAuthenticating] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    if (state.config?.profile?.email) {
+      setEmail(state.config.profile.email);
+    }
+  }, [state.config?.profile?.email]);
+
+  const handleSignIn = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setAuthenticating(true);
+    setTimeout(() => {
+      setSignedIn(true);
+      setAuthenticating(false);
+    }, 800);
+  };
+
+  const handleSignOut = () => {
+    setSignedIn(false);
+    setEmail("");
+    setPassphrase("");
+  };
+
+  const handleSyncNow = () => {
+    setSyncing(true);
+    setTimeout(() => setSyncing(false), 1200);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Preview Notice — this tab has no live backend yet; nothing here
+          actually leaves the device. Keep this banner until real Convex
+          Auth + sync mutations are wired up. */}
+      <div className="rounded-xl border border-warning/30 bg-warning/10 p-3.5 text-[12.5px] text-ink">
+        <span className="font-semibold">Preview:</span>{" "}
+        <span className="text-ink-secondary">
+          Cloud sync isn&rsquo;t connected in this build yet. This tab previews the upcoming experience — no
+          account is created and no data leaves this device.
+        </span>
+      </div>
+
+      {/* Hero Status Card */}
+      <div className="rounded-2xl border border-hairline/50 bg-card p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-4 border-b border-hairline/40 pb-5">
+          <div className="flex items-center gap-4">
+            <div
+              className={cn(
+                "flex size-12 shrink-0 items-center justify-center rounded-2xl transition-colors",
+                signedIn ? "bg-success/15 text-success" : "bg-raised text-ink-secondary"
+              )}
+            >
+              {signedIn ? <Cloud size={24} /> : <CloudOff size={24} />}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-[16px] font-semibold text-ink">
+                  {signedIn ? "Cloud Sync Active (Preview)" : "Local Storage Only (Sync Off)"}
+                </h2>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium",
+                    signedIn ? "bg-success/15 text-success" : "bg-raised text-ink-secondary"
+                  )}
+                >
+                  <span className={cn("size-1.5 rounded-full", signedIn ? "bg-success" : "bg-ink-secondary")} />
+                  {signedIn ? "Preview only — not actually connected" : "Offline / Unsynced"}
+                </span>
+              </div>
+              <p className="mt-1 text-[13px] text-ink-secondary">
+                {signedIn
+                  ? `This is a preview of what syncing to ${email || "your cloud account"} will look like once cloud sync ships.`
+                  : "Cloud sync is coming soon. This screen previews sign-in and settings sync across devices."}
+              </p>
+            </div>
+          </div>
+
+          {signedIn && (
+            <button
+              onClick={handleSyncNow}
+              disabled={syncing}
+              className="flex shrink-0 items-center gap-2 rounded-xl bg-accent px-4 py-2 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50 transition-all"
+            >
+              <RefreshCw size={14} className={cn(syncing && "animate-spin")} />
+              {syncing ? "Syncing…" : "Sync Now"}
+            </button>
+          )}
+        </div>
+
+        {/* Privacy Notice Banner */}
+        <div className="mt-5 rounded-xl border border-accent/20 bg-accent/5 p-4 text-[13px]">
+          <div className="flex items-start gap-2.5">
+            <Info size={18} className="mt-0.5 shrink-0 text-accent" />
+            <div>
+              <span className="font-semibold text-ink">Chat History Privacy Guarantee:</span>
+              <p className="mt-0.5 leading-relaxed text-ink-secondary">
+                Whenever cloud sync ships, your chat transcripts, prompt histories, and message logs will remain <strong className="text-ink font-medium">100% local</strong> on this machine and will <strong className="text-ink font-medium">NEVER</strong> be uploaded or synced to cloud servers. Only agent definitions, general settings, and provider preferences will be synchronized.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sign In / Sign Out & Passphrase Section */}
+      <div className="rounded-2xl border border-hairline/50 bg-card p-6 shadow-sm">
+        <h3 className="text-[15px] font-semibold text-ink mb-1">
+          {signedIn ? "Account & Security Passphrase (Preview)" : "Sign In to Cloud Sync (Preview)"}
+        </h3>
+        <p className="text-[13px] text-ink-secondary mb-5">
+          {signedIn
+            ? "Preview only: no session is actually active. Once cloud sync ships, secrets will be end-to-end encrypted locally before push."
+            : "Preview only: form fields below aren't wired to a live account yet. Once cloud sync ships, this pairs the device with your sync account."}
+        </p>
+
+        {signedIn ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between rounded-xl border border-hairline/40 bg-panel/60 p-4">
+              <div>
+                <div className="text-[11px] font-medium uppercase tracking-wider text-ink-secondary">Account Email</div>
+                <div className="mt-0.5 text-[14px] font-semibold text-ink">{email || "user@gererbuildstudio.com"}</div>
+              </div>
+              <button
+                onClick={handleSignOut}
+                className="flex items-center gap-1.5 rounded-xl bg-raised px-3.5 py-2 text-[13px] font-medium text-danger hover:bg-danger/10 transition-colors"
+              >
+                <LogOut size={14} /> Sign Out
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-hairline/40 bg-panel/60 p-4">
+              <div className="flex items-start gap-3">
+                <Lock size={18} className="mt-0.5 text-accent shrink-0" />
+                <div>
+                  <div className="text-[13px] font-medium text-ink">Client-Side Encryption (Preview)</div>
+                  <p className="mt-0.5 text-[12px] text-ink-secondary leading-relaxed">
+                    Once cloud sync ships, API keys and provider secrets will be encrypted locally using AES-GCM before transmission. Losing your sync passphrase will require re-entering keys locally on new devices.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSignIn} className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-ink">Sync Account Email</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full rounded-xl border border-hairline/60 bg-inset px-3.5 py-2.5 text-[14px] text-ink placeholder:text-ink-secondary focus:border-accent focus:outline-none transition-colors"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-ink">Sync Passphrase (Optional Secrets Key)</label>
+              <input
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                placeholder="Used to encrypt API keys client-side"
+                className="w-full rounded-xl border border-hairline/60 bg-inset px-3.5 py-2.5 text-[14px] text-ink placeholder:text-ink-secondary focus:border-accent focus:outline-none transition-colors"
+              />
+              <p className="mt-1 text-[12px] text-ink-secondary">
+                Preview only — this form doesn&rsquo;t submit anywhere yet. Once cloud sync ships, this passphrase
+                will never be sent to Convex servers; it will be derived client-side to decrypt your sync payload.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={authenticating}
+              className="flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50 transition-all"
+            >
+              {authenticating ? <Loader2 size={15} className="animate-spin" /> : <LogIn size={15} />}
+              {authenticating ? "Connecting…" : "Sign In & Enable Sync"}
+            </button>
+          </form>
+        )}
+      </div>
+
+      {/* Per-Agent Sync Indicators */}
+      <div className="rounded-2xl border border-hairline/50 bg-card p-6 shadow-sm">
+        <div className="flex items-center justify-between border-b border-hairline/40 pb-4 mb-4">
+          <div>
+            <h3 className="text-[15px] font-semibold text-ink">Agent Sync Status</h3>
+            <p className="text-[13px] text-ink-secondary">
+              Real-time synchronization status per configured bot agent.
+            </p>
+          </div>
+          <span className="rounded-full bg-raised px-3 py-1 text-[12px] font-medium text-ink">
+            {state.bots.length} Agents Configured
+          </span>
+        </div>
+
+        {state.bots.length === 0 ? (
+          <div className="py-6 text-center text-[13px] text-ink-secondary">
+            No agents created yet.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {state.bots.map((bot) => (
+              <div
+                key={bot.id}
+                className="flex items-center justify-between rounded-xl border border-hairline/40 bg-panel/60 p-3.5"
+              >
+                <div className="flex items-center gap-3">
+                  <InitialsAvatar initials={bot.name.slice(0, 2).toUpperCase()} size={36} />
+                  <div>
+                    <div className="text-[13px] font-semibold text-ink">{bot.name}</div>
+                    <div className="text-[11px] text-ink-secondary font-mono">{bot.id}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
+                      signedIn ? "bg-success/15 text-success" : "bg-raised text-ink-secondary"
+                    )}
+                  >
+                    <span
+                      className={cn("size-1.5 rounded-full", signedIn ? "bg-success" : "bg-ink-secondary")}
+                    />
+                    {signedIn ? "Synced to Cloud" : "Local Only"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ModelsSection() {
   const { state, dispatch } = useStore();
   const instances = state.instances ?? [];
@@ -511,30 +762,32 @@ function SystemSection() {
   const platform = window.gbs?.platform ?? (typeof navigator !== "undefined" ? navigator.platform : "Unknown");
 
   const updateLabel =
-    updaterState?.status === "checking"
-      ? "Checking for new versions…"
-      : updaterState?.status === "available"
-        ? `Update ${updaterState.version} is available for download.`
-        : updaterState?.status === "downloading"
-          ? `Downloading update: ${Math.round(updaterState.percent ?? 0)}%`
-          : updaterState?.status === "downloaded"
-            ? `Version ${updaterState.version} is downloaded and ready to install.`
-            : updaterState?.status === "error"
-              ? `Update check failed: ${updaterState.message ?? "network error"}`
-              : "You are on the latest version.";
+    !updater
+      ? "Automatic app updates are supported in the Desktop app. You are currently using the Web interface."
+      : updaterState?.status === "checking"
+        ? "Checking for application updates…"
+        : updaterState?.status === "available"
+          ? `Version ${updaterState.version} is available for download.`
+          : updaterState?.status === "downloading"
+            ? `Downloading update (${Math.round(updaterState.percent ?? 0)}% complete)…`
+            : updaterState?.status === "downloaded"
+              ? `Version ${updaterState.version} is downloaded and ready to install.`
+              : updaterState?.status === "error"
+                ? "Unable to check for updates. Please verify network connectivity."
+                : `Gerer Build Studio v${appVersion} is up to date.`;
 
   return (
     <div className="space-y-6">
       {/* App updates card */}
       <div className="rounded-2xl border border-hairline/50 bg-card p-6 shadow-sm">
         <div className="border-b border-hairline/40 pb-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <h2 className="text-[16px] font-semibold text-ink">Application Updates</h2>
               <p className="mt-1 text-[13px] text-ink-secondary">{updateLabel}</p>
             </div>
             {updater && (
-              <div>
+              <div className="shrink-0">
                 {updaterState?.status === "available" ? (
                   <button
                     onClick={() => void updater.download()}
@@ -547,7 +800,7 @@ function SystemSection() {
                     onClick={() => void updater.install()}
                     className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-[13px] font-medium text-white hover:brightness-110"
                   >
-                    <RotateCw size={15} /> Restart & Apply
+                    <RotateCw size={15} /> Restart & Apply Update
                   </button>
                 ) : (
                   <button
@@ -556,12 +809,26 @@ function SystemSection() {
                     className="flex items-center gap-2 rounded-xl bg-raised px-4 py-2 text-[13px] font-medium text-ink hover:bg-raised-hover disabled:opacity-40"
                   >
                     <RefreshCw size={14} className={cn(updaterState?.status === "checking" && "animate-spin")} />
-                    Check for Updates
+                    {updaterState?.status === "error" ? "Retry Check" : "Check for Updates"}
                   </button>
                 )}
               </div>
             )}
           </div>
+
+          {updaterState?.status === "error" && (
+            <div className="mt-3.5 flex items-center justify-between rounded-xl border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-[12.5px] text-warning">
+              <span>Unable to check for updates. Please verify network connectivity.</span>
+              {updater && (
+                <button
+                  onClick={() => void updater.check()}
+                  className="ml-3 font-medium underline hover:text-ink"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-[13px]">
@@ -673,13 +940,21 @@ function SystemSection() {
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof User; blurb: string }> = [
   { id: "profile", label: "Profile", icon: User, blurb: "Account details & avatar" },
   { id: "connections", label: "Connections", icon: Key, blurb: "API keys & credentials" },
+  { id: "sync", label: "Sync & Cloud", icon: Cloud, blurb: "Convex sync & devices" },
   { id: "models", label: "Models & Providers", icon: Cpu, blurb: "Live drivers & CLIs" },
   { id: "system", label: "System & Updates", icon: Info, blurb: "Diagnostics & updater" },
 ];
 
 export function SettingsScreen() {
-  const { dispatch } = useStore();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const { state, dispatch } = useStore();
+  const initialTab = (state.appSettingsTab as SettingsTab) || "profile";
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+
+  useEffect(() => {
+    if (state.appSettingsTab && state.appSettingsTab !== activeTab) {
+      setActiveTab(state.appSettingsTab as SettingsTab);
+    }
+  }, [state.appSettingsTab, activeTab]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -732,7 +1007,7 @@ export function SettingsScreen() {
           {/* Categorized Tab Bar */}
           <nav
             aria-label="Settings Categories"
-            className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-2xl border border-hairline/40 bg-panel p-1.5"
+            className="grid grid-cols-2 sm:grid-cols-5 gap-2 rounded-2xl border border-hairline/40 bg-panel p-1.5"
           >
             {TABS.map((tab) => {
               const Icon = tab.icon;
@@ -742,7 +1017,7 @@ export function SettingsScreen() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    "flex flex-col items-center sm:items-start gap-1 rounded-xl px-3.5 py-2.5 text-left transition-all",
+                    "flex flex-col items-center sm:items-start gap-1 rounded-xl px-3 py-2.5 text-left transition-all",
                     active
                       ? "bg-card text-ink shadow-sm border border-hairline/60 font-medium"
                       : "text-ink-secondary hover:bg-raised/50 hover:text-ink"
@@ -764,6 +1039,7 @@ export function SettingsScreen() {
           <div>
             {activeTab === "profile" && <ProfileSection />}
             {activeTab === "connections" && <ConnectionsSection />}
+            {activeTab === "sync" && <SyncSection />}
             {activeTab === "models" && <ModelsSection />}
             {activeTab === "system" && <SystemSection />}
           </div>

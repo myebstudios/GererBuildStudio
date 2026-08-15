@@ -47,7 +47,7 @@ const TOOLS = [
                 project_id: { type: "string" },
                 assignee_bot_id: { type: "string", description: "A bot id, or 'unassigned'." },
                 status: { type: "string", enum: ["todo", "doing", "review", "done"] },
-                type: { type: "string", enum: ["feature", "bug", "research", "documentation", "maintenance"] },
+                type: { type: "string", enum: ["feature", "bug", "task", "research", "documentation", "maintenance"] },
                 priority: { type: "string", enum: ["low", "normal", "high", "urgent"] },
                 tag: { type: "string" },
                 overdue: { type: "boolean" },
@@ -64,7 +64,7 @@ const TOOLS = [
                 description: { type: "string" },
                 acceptance_criteria: { type: "array", items: { type: "string" } },
                 status: { type: "string", enum: ["todo", "doing", "review", "done"] },
-                type: { type: "string", enum: ["feature", "bug", "research", "documentation", "maintenance"] },
+                type: { type: "string", enum: ["feature", "bug", "task", "research", "documentation", "maintenance"] },
                 priority: { type: "string", enum: ["low", "normal", "high", "urgent"] },
                 tags: { type: "array", items: { type: "string" } },
                 due_at: { type: "string", description: "An ISO-8601 date/time." },
@@ -95,7 +95,7 @@ const TOOLS = [
                 description: { type: "string" },
                 acceptance_criteria: { type: "array", items: { type: "string" } },
                 status: { type: "string", enum: ["todo", "doing", "review", "done"] },
-                type: { type: "string", enum: ["feature", "bug", "research", "documentation", "maintenance"] },
+                type: { type: "string", enum: ["feature", "bug", "task", "research", "documentation", "maintenance"] },
                 priority: { type: "string", enum: ["low", "normal", "high", "urgent"] },
                 tags: { type: "array", items: { type: "string" } },
                 due_at: { type: ["string", "null"] },
@@ -116,6 +116,15 @@ const TOOLS = [
                 bot_id: { type: "string" },
             },
             required: ["task_id", "revision", "bot_id"],
+        },
+    },
+    {
+        name: "delete_task",
+        description: "Permanently delete a task from the shared board. Requires its current revision. Use sparingly — prefer moving a task to done over deleting finished work.",
+        inputSchema: {
+            type: "object",
+            properties: { task_id: { type: "string" }, revision: { type: "integer" } },
+            required: ["task_id", "revision"],
         },
     },
 ].filter((tool) => DEPTH < 1 || (tool.name !== "list_bots" && tool.name !== "ask_bot"));
@@ -161,6 +170,8 @@ function renderTask(task) {
         `assignee: ${assignee?.name ?? "unassigned"}${assignee?.id ? ` (${assignee.id})` : ""}`,
         `project: ${project ? `#${project.mention} (${project.name})${project.path ? ` at ${project.path}` : project.available ? "" : " [unavailable]"}` : "none"}`,
     ];
+    if (task.trelloCardUrl)
+        lines.push(`trello: ${task.trelloCardUrl}`);
     if (task.tags && task.tags.length)
         lines.push(`tags: ${task.tags.join(", ")}`);
     if (task.dueAt)
@@ -255,6 +266,16 @@ async function callTool(name, args) {
             method: "POST", body: JSON.stringify({ revision, botId }),
         });
         return { text: `Delegated task:\n${renderTask(r.task)}` };
+    }
+    if (name === "delete_task") {
+        const taskId = String(args.task_id ?? "").trim();
+        const revision = Number(args.revision);
+        if (!taskId || !Number.isInteger(revision))
+            return { text: "delete_task needs task_id and revision.", isError: true };
+        await api(`/api/internal/tasks/${encodeURIComponent(taskId)}`, {
+            method: "DELETE", body: JSON.stringify({ revision }),
+        });
+        return { text: `Deleted task ${taskId}.` };
     }
     return { text: `Unknown tool: ${name}`, isError: true };
 }

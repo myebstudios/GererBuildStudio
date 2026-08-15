@@ -2,8 +2,30 @@ import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSyn
 import { join } from "node:path";
 import { newId } from "./contracts.js";
 export const TASK_STATUSES = ["todo", "doing", "review", "done"];
-export const TASK_TYPES = ["feature", "bug", "research", "documentation", "maintenance"];
+export const TASK_TYPES = ["feature", "bug", "task", "research", "documentation", "maintenance"];
 export const TASK_PRIORITIES = ["low", "normal", "high", "urgent"];
+const MENTION_PATTERN = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;
+/** lowercase, non-alphanumeric runs -> "-", trimmed, capped; "task" if empty. */
+function slugify(title) {
+    const slug = title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 40)
+        .replace(/-+$/g, "");
+    return slug || "task";
+}
+/** Slugify + auto-suffix ("-2", "-3", …) against mentions already in use. */
+function uniqueMention(title, taken) {
+    const base = slugify(title);
+    if (!taken.has(base))
+        return base;
+    for (let n = 2;; n++) {
+        const candidate = `${base}-${n}`;
+        if (!taken.has(candidate))
+            return candidate;
+    }
+}
 export class TaskValidationError extends Error {
     status = 400;
     constructor(message) {
@@ -86,13 +108,20 @@ function isActor(value) {
     if (!value || typeof value !== "object")
         return false;
     const actor = value;
-    return actor.kind === "user" || (actor.kind === "bot" && typeof actor.botId === "string" && typeof actor.name === "string");
+    if (actor.kind === "user")
+        return true;
+    if (actor.kind === "bot")
+        return typeof actor.botId === "string" && typeof actor.name === "string";
+    if (actor.kind === "sync")
+        return typeof actor.source === "string";
+    return false;
 }
 function validateSavedTask(value) {
     if (!value || typeof value !== "object")
         throw new TaskValidationError("Saved task data is invalid. The file was left unchanged.");
     const task = value;
     const valid = typeof task.id === "string" &&
+        (task.mention === undefined || (typeof task.mention === "string" && MENTION_PATTERN.test(task.mention))) &&
         typeof task.title === "string" && task.title.length > 0 &&
         typeof task.description === "string" &&
         Array.isArray(task.acceptanceCriteria) && task.acceptanceCriteria.every((item) => typeof item === "string") &&
@@ -101,6 +130,8 @@ function validateSavedTask(value) {
         (task.dueAt === null || typeof task.dueAt === "number") &&
         (task.projectId === null || typeof task.projectId === "string") &&
         (task.assigneeBotId === null || typeof task.assigneeBotId === "string") &&
+        (task.trelloCardId === undefined || task.trelloCardId === null || typeof task.trelloCardId === "string") &&
+        (task.trelloCardUrl === undefined || task.trelloCardUrl === null || typeof task.trelloCardUrl === "string") &&
         typeof task.position === "number" && Number.isFinite(task.position) &&
         typeof task.revision === "number" && Number.isInteger(task.revision) && task.revision > 0 &&
         typeof task.createdAt === "number" && typeof task.updatedAt === "number" &&
@@ -113,10 +144,22 @@ function validateSavedTask(value) {
     });
     if (!valid)
         throw new TaskValidationError("Saved task data is invalid. The file was left unchanged.");
-    return task;
+    return {
+        ...task,
+        // "" is a backfill marker for legacy saves predating `mention` — filled
+        // in by reloadIfChanged() once the full task list is in hand (dedup
+        // needs siblings), never persisted as an empty string.
+        mention: task.mention ?? "",
+        trelloCardId: task.trelloCardId ?? null,
+        trelloCardUrl: task.trelloCardUrl ?? null,
+    };
 }
 function actorLabel(actor) {
-    return actor.kind === "user" ? "You" : actor.name;
+    if (actor.kind === "user")
+        return "You";
+    if (actor.kind === "bot")
+        return actor.name;
+    return "Trello sync";
 }
 function activity(action, actor, detail) {
     return { id: newId(), action, actor, at: Date.now(), ...(detail ? { detail } : {}) };
@@ -152,6 +195,51 @@ export function filterTasks(tasks, filters, now = Date.now()) {
         }
         return true;
     }).sort(compareTasks);
+}
+/** Reverse-match: %mention text -> known tasks, mirroring server/projects.ts's mentionedProjects. */
+export function mentionedTasks(text, tasks) {
+    const byMention = new Map(tasks.map((task) => [task.mention, task]));
+    const seen = new Set();
+    const referenced = [];
+    for (const match of text.matchAll(/%[a-z0-9][a-z0-9._-]*/gi)) {
+        const start = match.index;
+        if (start > 0 && /[a-z0-9_#@%]/i.test(text[start - 1]))
+            continue;
+        const handle = match[0].replace(/[._-]+$/, "").slice(1).toLowerCase();
+        const task = byMention.get(handle);
+        if (!task || seen.has(task.id))
+            continue;
+        seen.add(task.id);
+        referenced.push(task);
+    }
+    return referenced;
+}
+/** Sources are ordered from highest to lowest priority. The first source
+ * containing known task references owns the turn's task context. */
+export function resolveTaskContext(sources, tasks) {
+    let referenced = [];
+    for (const source of sources) {
+        referenced = mentionedTasks(source, tasks);
+        if (referenced.length > 0)
+            break;
+    }
+    if (referenced.length === 0)
+        return { tasks: [], system: "" };
+    const lines = referenced.map((task) => {
+        const description = task.description.length > 500 ? `${task.description.slice(0, 500)}…` : task.description;
+        return [
+            `- %${task.mention} — "${task.title}" (status: ${task.status}, priority: ${task.priority})`,
+            description ? `  ${description}` : null,
+        ].filter(Boolean).join("\n");
+    });
+    return {
+        tasks: referenced,
+        system: [
+            "Trusted task references from the user's task board:",
+            ...lines,
+            "Use this as ground truth for the referenced tasks; do not infer their status or content from other text.",
+        ].join("\n"),
+    };
 }
 export class TaskStore {
     filePath;
@@ -193,8 +281,19 @@ export class TaskStore {
             if (!Array.isArray(parsed))
                 throw new TaskValidationError("Saved task data is invalid. The file was left unchanged.");
             const tasks = parsed.map(validateSavedTask).sort(compareTasks);
+            const taken = new Set(tasks.map((task) => task.mention).filter(Boolean));
+            let backfilled = false;
+            for (const task of tasks) {
+                if (task.mention)
+                    continue;
+                task.mention = uniqueMention(task.title, taken);
+                taken.add(task.mention);
+                backfilled = true;
+            }
             this.tasks = tasks;
             this.fileStamp = after;
+            if (backfilled)
+                this.save();
             return true;
         }
         throw new TaskValidationError("Task data changed while it was being loaded. Try again.");
@@ -237,9 +336,11 @@ export class TaskStore {
         if (!isPriority(priority))
             throw new TaskValidationError("Task priority is invalid.");
         const now = Date.now();
+        const title = cleanText(input.title, "Title", 200, true);
         const task = {
             id: newId(),
-            title: cleanText(input.title, "Title", 200, true),
+            mention: uniqueMention(title, new Set(this.tasks.map((t) => t.mention))),
+            title,
             description: cleanText(input.description, "Description", 20_000),
             acceptanceCriteria: cleanCriteria(input.acceptanceCriteria),
             status,
@@ -256,6 +357,8 @@ export class TaskStore {
             createdBy: actor,
             updatedBy: actor,
             activity: [activity("created", actor)],
+            trelloCardId: null,
+            trelloCardUrl: null,
         };
         this.tasks.push(task);
         this.tasks.sort(compareTasks);
@@ -382,6 +485,22 @@ export class TaskStore {
             updatedBy: actor,
             activity: [...current.activity, activity("delegated", actor, `Assigned to ${cleanText(targetName, "Assignee name", 200, true)}`)].slice(-MAX_ACTIVITY),
         };
+        this.tasks = this.tasks.map((task) => task.id === id ? next : task).sort(compareTasks);
+        this.save();
+        return next;
+    }
+    /** Attaches (or updates) the Trello card mirroring this task. Used only
+     * by server/trelloSync.ts, which owns the id/url pair end to end — no
+     * revision check, since this never touches user-authored content and is
+     * safe to retry. A no-op activity entry so the trail stays about work,
+     * not plumbing. */
+    linkTrelloCard(id, cardId, cardUrl) {
+        const current = this.get(id);
+        if (!current)
+            throw new TaskNotFoundError();
+        if (current.trelloCardId === cardId && current.trelloCardUrl === cardUrl)
+            return current;
+        const next = { ...current, trelloCardId: cardId, trelloCardUrl: cardUrl, revision: current.revision + 1, updatedAt: Date.now() };
         this.tasks = this.tasks.map((task) => task.id === id ? next : task).sort(compareTasks);
         this.save();
         return next;

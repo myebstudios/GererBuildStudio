@@ -14,6 +14,7 @@ import { UpdateBanner } from "@/components/UpdateBanner";
 import { ProjectsScreen } from "@/components/ProjectsScreen";
 import { TaskBoardScreen } from "@/components/TaskBoardScreen";
 import { ProjectsProvider } from "@/state/projects";
+import { ConvexClientProvider } from "@/lib/ConvexClientProvider";
 
 function Shell() {
   const { state, dispatch } = useStore();
@@ -104,11 +105,13 @@ export default function App() {
     }
   }, []);
   return (
-    <StoreProvider>
-      <ProjectsProvider>
-        <Shell />
-        {gated && <Onboarding onDone={() => setGated(false)} />}
-      </ProjectsProvider>
-    </StoreProvider>
+    <ConvexClientProvider>
+      <StoreProvider>
+        <ProjectsProvider>
+          <Shell />
+          {gated && <Onboarding onDone={() => setGated(false)} />}
+        </ProjectsProvider>
+      </StoreProvider>
+    </ConvexClientProvider>
   );
 }

@@ -172,6 +172,7 @@ export interface AppState {
   appsOpen: boolean;
   computerOpen: boolean;
   appSettingsOpen: boolean;
+  appSettingsTab?: string;
   projectsOpen: boolean;
   taskBoardOpen: boolean;
   tasks: TaskRecord[];
@@ -230,7 +231,7 @@ export type Action =
   | { type: "toggleApps"; open?: boolean }
   | { type: "togglePlugins"; open?: boolean }
   | { type: "toggleComputer"; open?: boolean }
-  | { type: "toggleAppSettings"; open?: boolean }
+  | { type: "toggleAppSettings"; open?: boolean; tab?: string }
   | { type: "toggleProjects"; open?: boolean }
   | { type: "toggleTaskBoard"; open?: boolean }
   | { type: "hydrateTasks"; tasks: TaskRecord[]; projects: TaskProject[] }
@@ -534,6 +535,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         appSettingsOpen: open,
+        appSettingsTab: action.tab ?? (open ? state.appSettingsTab : undefined),
         settingsOpen: open ? false : state.settingsOpen,
         computerOpen: open ? false : state.computerOpen,
         appsOpen: open ? false : state.appsOpen,

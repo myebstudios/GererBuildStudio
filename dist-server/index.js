@@ -9,13 +9,16 @@ import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as box from "./box.js";
 import * as composio from "./composio.js";
+import * as trello from "./trello.js";
+import { TrelloLinkStore } from "./trelloLinks.js";
+import { TrelloSync } from "./trelloSync.js";
 import { ensureDirs, instanceConfigs, loadConfig, saveConfig, DATA_DIR, EVENTS_DIR, NATIVE_DIR } from "./config.js";
 import { BUILT_IN_DRIVERS } from "./drivers/builtIn.js";
 import { EventBus } from "./harness/bus.js";
 import { ProviderRegistry } from "./harness/registry.js";
 import { automaticHandoffBots, mentionedBots, Store } from "./store.js";
 import { readRegisteredProjects, resolveProjectContext } from "./projects.js";
-import { TaskConflictError, TaskStore, } from "./tasks.js";
+import { resolveTaskContext, TaskConflictError, TaskStore, } from "./tasks.js";
 const PORT = Number(process.env.GBS_PORT || 8899);
 const STATIC_DIR = process.env.GBS_STATIC_DIR || null;
 const MIME = {
@@ -105,6 +108,15 @@ async function defaultSelection() {
 let bootSelection = { instanceId: "claude", model: "claude-sonnet-5" };
 const store = new Store(() => bootSelection);
 const taskStore = new TaskStore(DATA_DIR);
+const trelloLinks = new TrelloLinkStore(DATA_DIR);
+const trelloSync = new TrelloSync({
+    taskStore,
+    trelloLinks,
+    credentials: () => trelloCreds(),
+    onTaskChanged: (task) => broadcast({ kind: "task.updated", task: taskView(task) }),
+    log: (msg) => console.error(`[trello] ${msg}`),
+});
+const stopTrelloPolling = trelloSync.startPolling();
 bootSelection = await defaultSelection();
 store.seedIfEmpty();
 // ── SSE fan-out to clients ─────────────────────────────────────────────
@@ -400,18 +412,19 @@ async function startTurn(botId, text, opts) {
         const attSummary = m.attachments?.length ? ` [Attached: ${m.attachments.map((a) => a.name).join(", ")}]` : "";
         return { role: m.role === "user" ? "user" : "assistant", text: `${m.text || ""}${attSummary}`.trim() };
     });
-    // After a rewind (edit / branch switch) the provider's native session
-    // still contains the abandoned branch: start a fresh session instead of
-    // resuming, and for cursor-resuming drivers replay the surviving path
-    // inline (transcript-replay drivers get it via transcript). The flag is
-    // cleared only once the turn is actually dispatched — clearing it here
+    // After a rewind (edit / branch switch), or after selecting a different
+    // model, the provider's native session cannot be trusted to represent the
+    // active conversation. Start fresh and replay the visible path inline for
+    // cursor-resuming drivers; transcript-replay drivers get it via transcript.
+    // The rewind flag is cleared only once dispatch succeeds — clearing it here
     // would cost the next attempt its history if this dispatch fails.
     const rewound = Boolean(bot.rewound);
+    const resumeCursor = rewound ? undefined : bot.resumeCursors[bot.modelSelection.instanceId];
     const attPrompt = formatAttachmentContext(userMessage.attachments);
     const promptBody = [text, attPrompt].filter(Boolean).join("\n\n");
-    const turnText = rewound && instance.driverKind !== "grok" && transcript.length
+    const turnText = instance.driverKind !== "grok" && !resumeCursor && transcript.length
         ? [
-            "[The user rewound this conversation (edited a message or switched to another version). Everything before this point was replaced by the following history:]",
+            "[Continue this conversation using the following prior history. It was replayed because this is a fresh model session:]",
             "",
             ...transcript.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`),
             "",
@@ -428,6 +441,7 @@ async function startTurn(botId, text, opts) {
         .filter(Boolean)
         .join(" ");
     const projectContext = resolveProjectContext([text, bot.description]);
+    const taskContext = resolveTaskContext([text, bot.description], taskStore.list());
     // busy flips immediately so the composer locks; the dispatch itself runs
     // in the background — box provisioning can take ~90s and must never
     // hang the HTTP request
@@ -481,17 +495,18 @@ async function startTurn(botId, text, opts) {
                 attachments: userMessage.attachments,
                 model: bot.modelSelection.model,
                 // a rewound thread never resumes the abandoned branch's session
-                resumeCursor: rewound ? undefined : bot.resumeCursors[bot.modelSelection.instanceId],
+                resumeCursor,
                 transcript,
                 system: persona +
                     (projectContext.system ? `\n\n${projectContext.system}` : "") +
+                    (taskContext.system ? `\n\n${taskContext.system}` : "") +
                     (integrations.computer && instance.driverKind !== "boxAgent"
                         ? " You have your own cloud computer — use the computer tools (screenshot, computer_exec, open_url) whenever browsing or acting on a desktop helps."
                         : integrations.localComputer
                             ? " You can act on the user's computer through the computer tools — take a screenshot or read the desktop state first, prefer accessibility actions over raw coordinates, and act carefully."
                             : "") +
                     (integrations.agents
-                        ? ` You can use the shared task board through list_tasks, create_task, claim_task, update_task, and delegate_task. Always use these tools for task changes; never read, edit, or replace tasks.json directly. Claim a suitable unassigned task before starting it, keep its status current, and move completed work to review so the user can verify it.${canMessagePeers ? " You can also work with the user's other bots — list_bots shows who's available, and ask_bot sends one of them a message and returns their reply." : ""}`
+                        ? ` You can use the shared task board through list_tasks, create_task, claim_task, update_task, delegate_task, and delete_task. Always use these tools for task changes; never read, edit, or replace tasks.json directly. Claim a suitable unassigned task before starting it, keep its status current, and move completed work to review so the user can verify it. If asked about your current, assigned, or in-progress work, call list_tasks (filter by your own assignee) before answering — do not guess from the filesystem or say none exist without checking.${canMessagePeers ? " You can also work with the user's other bots — list_bots shows who's available, and ask_bot sends one of them a message and returns their reply." : ""}`
                         : "") +
                     (tagged.length
                         ? ` The user tagged ${tagged
@@ -621,6 +636,7 @@ spoken = new Set(), epoch = groupQueueEpoch.get(groupId) ?? 0) {
     const latestUserText = latestUserMessage?.text ?? "";
     const attPrompt = formatAttachmentContext(latestUserMessage?.attachments);
     const projectContext = resolveProjectContext([latestUserText, group.bulletin, bot.description]);
+    const taskContext = resolveTaskContext([latestUserText, group.bulletin, bot.description], taskStore.list());
     const system = [
         `You are ${bot.name}, a bot in the room "${group.name}" in Gerer Build Studio.`,
         bot.title && `Role: ${bot.title}.`,
@@ -628,6 +644,7 @@ spoken = new Set(), epoch = groupQueueEpoch.get(groupId) ?? 0) {
         `Room members: ${roster}, and ${userName} (the human).`,
         group.bulletin.trim() && `Room bulletin (shared instructions for everyone):\n${group.bulletin.trim()}`,
         projectContext.system,
+        taskContext.system,
         `Reply as yourself, briefly and conversationally. To bring a teammate in, mention them like @Name — they'll see the conversation and respond.`,
     ]
         .filter(Boolean)
@@ -753,10 +770,61 @@ function configStatus() {
         xai: { configured: Boolean(cfg.xai?.key) },
         composio: { configured: Boolean(cfg.composio?.key), apiKeyConfigured: Boolean(cfg.composio?.apiKey) },
         box: { configured: Boolean(cfg.box?.token) },
+        trello: { keyConfigured: Boolean(cfg.trello?.key), configured: Boolean(cfg.trello?.token) },
         // not a secret — the sidebar shows it
         profile: { name: cfg.profile?.name ?? "", email: cfg.profile?.email ?? "" },
     };
 }
+function trelloCreds() {
+    return cfg.trello?.key && cfg.trello?.token ? { key: cfg.trello.key, token: cfg.trello.token } : null;
+}
+// Served at GET /trello/callback (not under /api/) — the return_url Trello
+// redirects the user's browser to after they approve access. Trello puts
+// the token in the URL fragment, which only client-side JS can read, so
+// this page reads it and hands it to the server itself.
+const TRELLO_CALLBACK_HTML = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Connecting Trello…</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: #070707; color: #fcfcfc; font: 14px/1.5 -apple-system, "Segoe UI", Inter, system-ui, sans-serif; }
+  .card { max-width: 360px; padding: 28px; border-radius: 14px; background: #111111; border: 1px solid #333333; text-align: center; }
+  h1 { font-size: 15px; margin: 0 0 8px; }
+  p { margin: 0; color: #fcfcfc99; }
+  .ok { color: #38d591; } .err { color: #ff5667; }
+</style></head>
+<body><div class="card" id="card">
+  <h1 id="title">Connecting your Trello account…</h1>
+  <p id="detail">Hang on a second.</p>
+</div>
+<script>
+(function () {
+  var title = document.getElementById("title");
+  var detail = document.getElementById("detail");
+  var hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+  var token = hash.get("token");
+  if (!token) {
+    title.textContent = "Trello wasn't connected";
+    title.className = "err";
+    detail.textContent = "Authorization was cancelled or didn't complete. You can close this tab and try again from Settings.";
+    return;
+  }
+  fetch("/api/trello/token", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: token }),
+  }).then(function (res) {
+    if (!res.ok) throw new Error("save failed");
+    title.textContent = "Trello connected";
+    title.className = "ok";
+    detail.textContent = "You can close this tab and return to Gerer Build Studio.";
+  }).catch(function () {
+    title.textContent = "Couldn't finish connecting";
+    title.className = "err";
+    detail.textContent = "The token was received but saving it failed. Close this tab and try again.";
+  });
+})();
+</script>
+</body></html>`;
 function taskActorForBot(botId) {
     const bot = store.bot(botId);
     return bot ? { kind: "bot", botId: bot.id, name: bot.name } : null;
@@ -810,6 +878,15 @@ function taskView(task, includeProjectPath = false) {
         assignee: task.assigneeBotId
             ? { id: task.assigneeBotId, name: assignee?.name ?? "Unavailable agent", available: Boolean(assignee && !assignee.hidden) }
             : null,
+    };
+}
+function trelloLinkView(link) {
+    const project = readRegisteredProjects().find((candidate) => candidate.id === link.projectId);
+    return {
+        ...link,
+        project: project
+            ? { id: project.id, name: project.name, mention: project.mention, available: project.available }
+            : { id: link.projectId, name: "Unavailable project", mention: link.projectId, available: false },
     };
 }
 function taskBoardPayload() {
@@ -895,6 +972,7 @@ const server = createServer(async (req, res) => {
                     return json(res, 404, { error: referenceError });
                 const task = taskStore.create(body, caller);
                 broadcast({ kind: "task.created", task: taskView(task) });
+                void trelloSync.pushTask(task.id).catch(() => { });
                 return json(res, 201, { task: taskView(task, true) });
             }
             let taskMatch = path.match(/^\/api\/internal\/tasks\/([\w-]+)$/);
@@ -908,6 +986,7 @@ const server = createServer(async (req, res) => {
                     return json(res, 404, { error: referenceError });
                 const task = taskStore.update(taskMatch[1], Number(body.revision), patch, caller);
                 broadcast({ kind: "task.updated", task: taskView(task) });
+                void trelloSync.pushTask(task.id).catch(() => { });
                 return json(res, 200, { task: taskView(task, true) });
             }
             taskMatch = path.match(/^\/api\/internal\/tasks\/([\w-]+)\/claim$/);
@@ -917,6 +996,7 @@ const server = createServer(async (req, res) => {
                 const body = await readBody(req);
                 const task = taskStore.claim(taskMatch[1], Number(body.revision), caller);
                 broadcast({ kind: "task.updated", task: taskView(task) });
+                void trelloSync.pushTask(task.id).catch(() => { });
                 return json(res, 200, { task: taskView(task, true) });
             }
             taskMatch = path.match(/^\/api\/internal\/tasks\/([\w-]+)\/delegate$/);
@@ -929,7 +1009,18 @@ const server = createServer(async (req, res) => {
                     return json(res, 404, { error: "no such agent" });
                 const task = taskStore.delegate(taskMatch[1], Number(body.revision), target.id, target.name, caller);
                 broadcast({ kind: "task.updated", task: taskView(task) });
+                void trelloSync.pushTask(task.id).catch(() => { });
                 return json(res, 200, { task: taskView(task, true) });
+            }
+            taskMatch = path.match(/^\/api\/internal\/tasks\/([\w-]+)$/);
+            if (taskMatch && method === "DELETE") {
+                if (!caller)
+                    return json(res, 401, { error: "unknown calling agent" });
+                const body = await readBody(req);
+                const task = taskStore.delete(taskMatch[1], Number(body.revision));
+                broadcast({ kind: "task.deleted", taskId: task.id });
+                void trelloSync.archiveTask(task).catch(() => { });
+                return json(res, 200, { ok: true });
             }
             if (method === "POST" && path === "/api/internal/ask-bot") {
                 const body = await readBody(req);
@@ -1035,6 +1126,7 @@ const server = createServer(async (req, res) => {
                 return json(res, 404, { error: referenceError });
             const task = taskStore.create(body, { kind: "user" });
             broadcast({ kind: "task.created", task: taskView(task) });
+            void trelloSync.pushTask(task.id).catch(() => { });
             return json(res, 201, { task: taskView(task) });
         }
         let taskMatch = path.match(/^\/api\/tasks\/([\w-]+)$/);
@@ -1046,6 +1138,7 @@ const server = createServer(async (req, res) => {
                 return json(res, 404, { error: referenceError });
             const task = taskStore.update(taskMatch[1], Number(body.revision), patch, { kind: "user" });
             broadcast({ kind: "task.updated", task: taskView(task) });
+            void trelloSync.pushTask(task.id).catch(() => { });
             return json(res, 200, { task: taskView(task) });
         }
         taskMatch = path.match(/^\/api\/tasks\/([\w-]+)\/delegate$/);
@@ -1056,6 +1149,7 @@ const server = createServer(async (req, res) => {
                 return json(res, 404, { error: "no such agent" });
             const task = taskStore.delegate(taskMatch[1], Number(body.revision), target.id, target.name, { kind: "user" });
             broadcast({ kind: "task.updated", task: taskView(task) });
+            void trelloSync.pushTask(task.id).catch(() => { });
             return json(res, 200, { task: taskView(task) });
         }
         taskMatch = path.match(/^\/api\/tasks\/([\w-]+)$/);
@@ -1063,6 +1157,7 @@ const server = createServer(async (req, res) => {
             const body = await readBody(req);
             const task = taskStore.delete(taskMatch[1], Number(body.revision));
             broadcast({ kind: "task.deleted", taskId: task.id });
+            void trelloSync.archiveTask(task).catch(() => { });
             return json(res, 200, { ok: true });
         }
         // ── bots ──
@@ -1107,6 +1202,12 @@ const server = createServer(async (req, res) => {
                 const ids = body.memberIds.filter((id) => typeof id === "string" && Boolean(store.bot(id)));
                 if (ids.length)
                     patch.memberIds = ids;
+            }
+            if (body.projectId !== undefined) {
+                if (body.projectId !== null && typeof body.projectId !== "string") {
+                    return json(res, 400, { error: "projectId must be a string or null" });
+                }
+                patch.projectId = body.projectId;
             }
             const group = store.patchGroup(m[1], patch);
             if (!group)
@@ -1215,6 +1316,17 @@ const server = createServer(async (req, res) => {
             for (const key of ["name", "title", "description", "notifications", "modelSelection", "unread", "computer", "color", "mascotExpression", "pinned", "hidden"]) {
                 if (body[key] !== undefined)
                     patch[key] = body[key];
+            }
+            const current = store.bot(m[1]);
+            if (!current)
+                return json(res, 404, { error: "no such bot" });
+            const nextSelection = patch.modelSelection;
+            if (nextSelection &&
+                (nextSelection.instanceId !== current.modelSelection.instanceId || nextSelection.model !== current.modelSelection.model)) {
+                // Native sessions are model-specific. Dropping their cursors makes
+                // the next turn start under the selected model; startTurn replays the
+                // active local transcript so switching never loses chat context.
+                patch.resumeCursors = {};
             }
             const bot = store.patchBot(m[1], patch);
             if (!bot)
@@ -1364,6 +1476,38 @@ const server = createServer(async (req, res) => {
         if (method === "GET" && path === "/api/instances") {
             return json(res, 200, { instances: await registry.describe() });
         }
+        // ── per-instance auto-approve permission toggle (Settings → Models) ──
+        m = path.match(/^\/api\/instances\/([\w-]+)$/);
+        if (m && method === "PATCH") {
+            const instanceId = m[1];
+            const body = await readBody(req);
+            if (typeof body.autoApprove !== "boolean")
+                return json(res, 400, { error: "autoApprove must be a boolean" });
+            const driverConfig = registry.getDriverConfig(instanceId);
+            if (!driverConfig)
+                return json(res, 404, { error: "no such instance" });
+            const { driver, config } = driverConfig;
+            if (!driver.setAutoApprove)
+                return json(res, 400, { error: "this provider has no configurable permission mode" });
+            const nextConfig = driver.setAutoApprove(config, body.autoApprove);
+            // `instances` is all-or-nothing on disk (instanceConfigs only falls
+            // back to the built-in default fleet when disk has NO instances key
+            // at all) — writing just the touched instance would silently drop
+            // every other default-fleet instance the next time config loads.
+            // Materialize the full effective fleet first, patch only this one.
+            const fullFleet = instanceConfigs(cfg);
+            const instancesPatch = {};
+            for (const [id, entry] of Object.entries(fullFleet)) {
+                const { environment: _environment, ...rest } = entry; // don't persist injected secrets
+                instancesPatch[id] = id === instanceId ? { ...rest, config: nextConfig } : rest;
+            }
+            saveConfig({ instances: instancesPatch });
+            Object.assign(cfg, loadConfig());
+            await reloadProviders();
+            const instances = await registry.describe();
+            broadcast({ kind: "instances", instances });
+            return json(res, 200, { instances });
+        }
         // ── app config (API keys — never echoed back, booleans only) ──
         if (method === "GET" && path === "/api/config") {
             return json(res, 200, configStatus());
@@ -1371,7 +1515,7 @@ const server = createServer(async (req, res) => {
         if ((method === "PUT" || method === "PATCH") && path === "/api/config") {
             const body = await readBody(req);
             const patch = {};
-            for (const key of ["xai", "composio", "box", "profile"]) {
+            for (const key of ["xai", "composio", "box", "trello", "profile"]) {
                 if (body[key] && typeof body[key] === "object")
                     patch[key] = body[key];
             }
@@ -1379,13 +1523,77 @@ const server = createServer(async (req, res) => {
                 return json(res, 400, { error: "nothing to save" });
             saveConfig(patch);
             Object.assign(cfg, loadConfig());
-            // provider keys change the fleet; a profile edit must not kill
-            // in-flight turns with a pointless reload
-            if (Object.keys(patch).some((k) => k !== "profile"))
+            // provider keys change the fleet; a profile or Trello edit must not
+            // kill in-flight turns with a pointless reload
+            if (Object.keys(patch).some((k) => k !== "profile" && k !== "trello"))
                 await reloadProviders();
             const status = configStatus();
             broadcast({ kind: "config", ...status });
             return json(res, 200, status);
+        }
+        // ── Trello connection (browser authorize flow → personal token) ──
+        if (method === "GET" && path === "/trello/callback") {
+            res.writeHead(200, { "content-type": "text/html" });
+            return res.end(TRELLO_CALLBACK_HTML);
+        }
+        if (method === "GET" && path === "/api/trello/authorize-url") {
+            if (!cfg.trello?.key)
+                return json(res, 400, { error: "Add a Trello API key first." });
+            const returnUrl = `http://127.0.0.1:${PORT}/trello/callback`;
+            return json(res, 200, { url: trello.authorizeUrl(cfg.trello.key, returnUrl) });
+        }
+        if (method === "POST" && path === "/api/trello/token") {
+            const body = await readBody(req);
+            const token = String(body.token ?? "").trim();
+            if (!token)
+                return json(res, 400, { error: "missing token" });
+            saveConfig({ trello: { token } });
+            Object.assign(cfg, loadConfig());
+            const status = configStatus();
+            broadcast({ kind: "config", ...status });
+            return json(res, 200, status);
+        }
+        // ── Trello project ↔ board linking ──
+        if (method === "GET" && path === "/api/trello/boards") {
+            const creds = trelloCreds();
+            if (!creds)
+                return json(res, 200, { configured: false, boards: [] });
+            const boards = await trello.listBoards(creds);
+            return json(res, 200, { configured: true, boards: boards.filter((b) => !b.closed) });
+        }
+        if (method === "GET" && path === "/api/trello/links") {
+            return json(res, 200, { links: trelloLinks.list().map(trelloLinkView) });
+        }
+        m = path.match(/^\/api\/trello\/links\/([\w-]+)$/);
+        if (m && method === "POST") {
+            const creds = trelloCreds();
+            if (!creds)
+                return json(res, 400, { error: "Connect Trello first." });
+            const projectId = m[1];
+            const project = readRegisteredProjects().find((candidate) => candidate.id === projectId);
+            if (!project)
+                return json(res, 404, { error: "no such project" });
+            const body = await readBody(req);
+            const createName = typeof body.createBoard === "string" ? body.createBoard.trim() : "";
+            const board = createName
+                ? await trello.createBoard(creds, createName.slice(0, 200) || project.name)
+                : { id: String(body.boardId ?? "").trim(), name: String(body.boardName ?? "").trim(), url: String(body.boardUrl ?? "").trim() };
+            if (!board.id)
+                return json(res, 400, { error: "boardId or createBoard is required" });
+            const lists = await trello.ensureStatusLists(creds, board.id);
+            const link = trelloLinks.set(projectId, { boardId: board.id, boardName: board.name, boardUrl: board.url, lists, linkedAt: Date.now() });
+            return json(res, 200, { link: trelloLinkView(link) });
+        }
+        if (m && method === "DELETE") {
+            trelloLinks.unlink(m[1]);
+            return json(res, 200, { ok: true });
+        }
+        m = path.match(/^\/api\/trello\/links\/([\w-]+)\/sync$/);
+        if (m && method === "POST") {
+            if (!trelloLinks.get(m[1]))
+                return json(res, 404, { error: "project is not linked to Trello" });
+            await trelloSync.pullProject(m[1]);
+            return json(res, 200, { ok: true });
         }
         // ── connectors (Composio) ──
         if (method === "GET" && path === "/api/connectors/catalog") {
@@ -1467,6 +1675,7 @@ server.listen(PORT, "127.0.0.1", () => {
 });
 for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {
+        stopTrelloPolling();
         void registry.disposeAll().finally(() => process.exit(0));
     });
 }

@@ -29,7 +29,7 @@ export class ProviderRegistry {
                     enabled: entry.enabled ?? true,
                     config,
                 });
-                this.byId.set(instanceId, { instanceId, live });
+                this.byId.set(instanceId, { instanceId, live, driver, config });
             }
             catch (e) {
                 this.byId.set(instanceId, {
@@ -48,6 +48,11 @@ export class ProviderRegistry {
     get(instanceId) {
         return this.byId.get(instanceId)?.live ?? null;
     }
+    /** Driver + decoded config behind a live instance, for permission edits. */
+    getDriverConfig(instanceId) {
+        const entry = this.byId.get(instanceId);
+        return entry?.live ? { driver: entry.driver, config: entry.config } : null;
+    }
     entries() {
         return [...this.byId.values()];
     }
@@ -64,6 +69,7 @@ export class ProviderRegistry {
                     displayName: entry.shadow.displayName ?? entry.shadow.driverKind,
                     snapshot: { state: "unavailable", reason: entry.shadow.reason },
                     models: { default: "", options: [] },
+                    autoApprove: null,
                 };
             }
             const inst = entry.live;
@@ -80,6 +86,7 @@ export class ProviderRegistry {
                 displayName: inst.displayName ?? inst.driverKind,
                 snapshot,
                 models: inst.models,
+                autoApprove: entry.driver.getAutoApprove?.(entry.config) ?? null,
             };
         }));
     }

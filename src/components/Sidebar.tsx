@@ -2,7 +2,6 @@ import { track } from "@/lib/analytics";
 import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
-  ArrowDownToLine,
   BellDot,
   Bot as BotIcon,
   Check,
@@ -11,12 +10,10 @@ import {
   EyeOff,
   Eraser,
   FolderPlus,
-  Loader2,
   Pencil,
   Pin,
   PinOff,
   Plus,
-  RefreshCw,
   Search,
   Settings,
   LayoutGrid,
@@ -27,8 +24,8 @@ import {
 } from "lucide-react";
 import { useStore, formatTime, visibleMessages, type Bot, type Group, type Message } from "@/state/store";
 import { MausAvatar, InitialsAvatar } from "./Avatar";
+import { SyncStatusButton } from "./SyncStatusButton";
 import { stateForBot } from "@/lib/mascot";
-import { useUpdaterState } from "@/lib/updater";
 import { cn } from "@/lib/cn";
 
 const isElectron = navigator.userAgent.includes("Electron");
@@ -45,67 +42,6 @@ function profileInitials(profile?: { name?: string; email?: string }): string {
   }
   const email = profile?.email?.trim();
   return email ? email[0]!.toUpperCase() : "?";
-}
-
-/** Manual update check, next to the settings gear. Packaged app only (no
- * bridge in dev/browser). One button, state-dependent: check → download →
- * restart, with a brief "up to date" tick when a check finds nothing so a
- * click is never silent. The bottom-left popup handles the loud cases. */
-function UpdateButton() {
-  const s = useUpdaterState();
-  const [checkedAt, setCheckedAt] = useState(0);
-  const updater = window.gbs?.updater;
-  // a check that found nothing lands back on idle — acknowledge it for 3s
-  const upToDate = Boolean(checkedAt) && (!s || s.status === "idle") && Date.now() - checkedAt < 3000;
-  useEffect(() => {
-    if (!upToDate) return;
-    const timer = setTimeout(() => setCheckedAt(0), 3000);
-    return () => clearTimeout(timer);
-  }, [upToDate]);
-  if (!updater) return null;
-
-  const status = s?.status ?? "idle";
-  const working = status === "checking" || status === "downloading";
-  const label =
-    status === "available"
-      ? `Version ${s?.version ?? ""} available — download`
-      : status === "downloading"
-        ? `Downloading… ${Math.round(s?.percent ?? 0)}%`
-        : status === "downloaded"
-          ? `Version ${s?.version ?? ""} ready — restart to update`
-          : status === "checking"
-            ? "Checking for updates…"
-            : upToDate
-              ? "You're up to date"
-              : "Check for updates";
-
-  return (
-    <button
-      onClick={() => {
-        if (status === "downloaded") return void updater.install();
-        if (status === "available") return void updater.download();
-        setCheckedAt(Date.now());
-        void updater.check();
-      }}
-      disabled={working}
-      title={label}
-      aria-label={label}
-      className="relative rounded-md p-2 text-accent hover:bg-raised disabled:opacity-60"
-    >
-      {working ? (
-        <Loader2 size={18} className="animate-spin" />
-      ) : upToDate ? (
-        <Check size={18} />
-      ) : status === "available" ? (
-        <ArrowDownToLine size={18} />
-      ) : (
-        <RefreshCw size={18} />
-      )}
-      {status === "downloaded" && (
-        <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-accent" />
-      )}
-    </button>
-  );
 }
 
 function formatMessagePreview(m: Message): string {
@@ -674,16 +610,19 @@ export function Sidebar() {
         <div className="relative" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <button
             onClick={() => setPlusOpen((o) => !o)}
+            aria-label="New bot or room"
+            aria-expanded={plusOpen}
             className="rounded-md p-1 text-ink-secondary hover:bg-raised hover:text-ink"
             title="New bot or room"
           >
-            <Plus size={20} strokeWidth={2} />
+            <Plus size={20} strokeWidth={2} aria-hidden="true" />
           </button>
           {plusOpen && (
             <>
-              <div className="fixed inset-0 z-30" onMouseDown={() => setPlusOpen(false)} />
-              <div className="absolute right-0 top-full z-40 mt-1 w-44 overflow-hidden rounded-xl border border-hairline/50 bg-card py-1.5 shadow-2xl shadow-black/60">
+              <div className="fixed inset-0 z-30" onMouseDown={() => setPlusOpen(false)} aria-hidden="true" />
+              <div role="menu" aria-label="Create options" className="absolute right-0 top-full z-40 mt-1 w-44 overflow-hidden rounded-xl border border-hairline/50 bg-card py-1.5 shadow-2xl shadow-black/60">
                 <button
+                  role="menuitem"
                   onClick={() => {
                     setPlusOpen(false);
                     track("bot_created");
@@ -691,18 +630,19 @@ export function Sidebar() {
                   }}
                   className="flex w-full items-center gap-3 px-3.5 py-2 text-left text-[14px] text-ink hover:bg-raised/70"
                 >
-                  <BotIcon size={16} className="text-ink-secondary" />
-                  New Bot
+                  <BotIcon size={16} className="text-ink-secondary" aria-hidden="true" />
+                  <span>New Bot</span>
                 </button>
                 <button
+                  role="menuitem"
                   onClick={() => {
                     setPlusOpen(false);
                     setNewRoom(true);
                   }}
                   className="flex w-full items-center gap-3 px-3.5 py-2 text-left text-[14px] text-ink hover:bg-raised/70"
                 >
-                  <Users size={16} className="text-ink-secondary" />
-                  New Room
+                  <Users size={16} className="text-ink-secondary" aria-hidden="true" />
+                  <span>New Room</span>
                 </button>
               </div>
             </>
@@ -713,7 +653,7 @@ export function Sidebar() {
       {/* Search */}
       <div className="px-3 pt-2 pb-3">
         <div className="flex items-center gap-2 rounded-lg bg-raised/70 px-3 py-2">
-          <Search size={16} className="text-ink-secondary" />
+          <Search size={16} className="text-ink-secondary" aria-hidden="true" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -744,12 +684,13 @@ export function Sidebar() {
       <div className="px-3 pb-3 pt-2">
         <button
           onClick={() => dispatch({ type: "toggleTaskBoard", open: true })}
+          aria-label={`Task Board, ${totalTaskCount} tasks`}
           className={cn(
             "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left",
             state.taskBoardOpen ? "bg-raised" : "hover:bg-raised/50",
           )}
         >
-          <ListTodo size={20} className={state.taskBoardOpen ? "text-accent" : "text-ink-secondary"} />
+          <ListTodo size={20} className={state.taskBoardOpen ? "text-accent" : "text-ink-secondary"} aria-hidden="true" />
           <span className="min-w-0 flex-1 text-[14px] text-ink">Task Board</span>
           {totalTaskCount > 0 && (
             <span
@@ -774,27 +715,30 @@ export function Sidebar() {
         </button>
         <button
           onClick={() => dispatch({ type: "toggleProjects", open: true })}
+          aria-label="Projects"
           className={cn(
             "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left",
             state.projectsOpen ? "bg-raised" : "hover:bg-raised/50",
           )}
         >
-          <FolderKanban size={20} className={state.projectsOpen ? "text-accent" : "text-ink-secondary"} />
+          <FolderKanban size={20} className={state.projectsOpen ? "text-accent" : "text-ink-secondary"} aria-hidden="true" />
           <span className="text-[14px] text-ink">Projects</span>
         </button>
         <button
           onClick={() => dispatch({ type: "toggleApps", open: true })}
+          aria-label="Apps"
           className={cn(
             "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left",
             state.appsOpen ? "bg-raised" : "hover:bg-raised/50",
           )}
         >
-          <LayoutGrid size={20} className={state.appsOpen ? "text-accent" : "text-ink-secondary"} />
+          <LayoutGrid size={20} className={state.appsOpen ? "text-accent" : "text-ink-secondary"} aria-hidden="true" />
           <span className="text-[14px] text-ink">Apps</span>
         </button>
         <div className="flex items-center gap-1">
           <button
             onClick={() => dispatch({ type: "toggleAppSettings" })}
+            aria-label={`User profile: ${state.config?.profile?.name?.trim() || state.config?.profile?.email?.trim() || "You"}`}
             className={cn(
               "flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left",
               state.appSettingsOpen ? "bg-raised" : "hover:bg-raised/50",
@@ -805,9 +749,10 @@ export function Sidebar() {
               {state.config?.profile?.name?.trim() || state.config?.profile?.email?.trim() || "You"}
             </span>
           </button>
-          <UpdateButton />
+          <SyncStatusButton />
           <button
-            onClick={() => dispatch({ type: "toggleAppSettings" })}
+            onClick={() => dispatch({ type: "toggleAppSettings", tab: "sync" })}
+            aria-label="App settings"
             className={cn(
               "rounded-md p-2",
               state.appSettingsOpen
@@ -816,7 +761,7 @@ export function Sidebar() {
             )}
             title="App settings"
           >
-            <Settings size={18} />
+            <Settings size={18} aria-hidden="true" />
           </button>
         </div>
       </div>

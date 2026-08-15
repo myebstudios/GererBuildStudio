@@ -56,6 +56,8 @@ export const AntigravityDriver = {
     models: MODELS,
     decodeConfig,
     defaultConfig: () => decodeConfig({}),
+    getAutoApprove: (config) => config.fullAuto,
+    setAutoApprove: (config, autoApprove) => ({ ...config, fullAuto: autoApprove }),
     async create(input) {
         const { instanceId, config } = input;
         const listeners = new Set();

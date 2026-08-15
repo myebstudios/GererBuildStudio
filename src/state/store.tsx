@@ -143,6 +143,8 @@ export interface ConfigStatus {
   trello?: { configured: boolean; keyConfigured: boolean };
   /** who's using the app — collected in onboarding, shown in the sidebar */
   profile?: { name: string; email: string };
+  /** Global setting for automatic bot-to-bot handoffs across multi-agent rooms */
+  autoHandoffs?: boolean;
 }
 
 /** One row of GET /api/instances — the model picker's data. */

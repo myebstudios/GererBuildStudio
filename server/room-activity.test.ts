@@ -214,15 +214,13 @@ posixOnly("room activity runtime", () => {
     expect(cleared.group.queuedBotIds).toEqual([]);
   }, 20_000);
 
-  it("runs Markdown-formatted agent handoffs only when the room enables them", async () => {
+  it("runs Markdown-formatted agent handoffs when global autoHandoffs setting is enabled", async () => {
     const alpha = (await api("POST", "/api/bots")).body.bot;
     const beta = (await api("POST", "/api/bots")).body.bot;
     await api("PATCH", `/api/bots/${alpha.id}`, { name: "Alpha", modelSelection: { instanceId: "mentions", model: "fake-model" } });
     await api("PATCH", `/api/bots/${beta.id}`, { name: "Beta", modelSelection: { instanceId: "happy", model: "fake-model" } });
     const group = (await api("POST", "/api/groups", { name: "Automatic room", memberIds: [alpha.id, beta.id] })).body.group;
-    expect(group.autoHandoffs).toBe(false);
-    expect((await api("PATCH", `/api/groups/${group.id}`, { autoHandoffs: "yes" })).status).toBe(400);
-    expect((await api("PATCH", `/api/groups/${group.id}`, { autoHandoffs: true })).body.group.autoHandoffs).toBe(true);
+    await api("PUT", "/api/config", { autoHandoffs: true });
 
     const start = frames.length;
     expect((await api("POST", `/api/groups/${group.id}/messages`, { text: "@Alpha begin" })).status).toBe(202);

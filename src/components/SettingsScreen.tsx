@@ -503,9 +503,28 @@ function ModelsSection() {
 }
 
 function SystemSection() {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const updaterState = useUpdaterState();
   const updater = window.gbs?.updater;
+
+  const autoHandoffs = state.config?.autoHandoffs ?? true;
+  const [togglingAutoHandoffs, setTogglingAutoHandoffs] = useState(false);
+
+  const toggleAutoHandoffs = async () => {
+    setTogglingAutoHandoffs(true);
+    try {
+      const next = !autoHandoffs;
+      const status = await api("/api/config", {
+        method: "PUT",
+        body: JSON.stringify({ autoHandoffs: next }),
+      });
+      dispatch({ type: "configStatus", config: status });
+    } catch {
+      // revert on error
+    } finally {
+      setTogglingAutoHandoffs(false);
+    }
+  };
 
   const appVersion = "0.1.14";
   const platform = window.gbs?.platform ?? (typeof navigator !== "undefined" ? navigator.platform : "Unknown");
@@ -527,6 +546,36 @@ function SystemSection() {
 
   return (
     <div className="space-y-6">
+      {/* Auto Handoffs Card */}
+      <div className="rounded-2xl border border-hairline/50 bg-card p-6 shadow-sm">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-[16px] font-semibold text-ink">Automatic Agent Handoffs</h2>
+            <p className="mt-1 text-[13px] text-ink-secondary">
+              Automatically dispatch messages to mentioned team bots across all multi-agent rooms. Enabled by default for all rooms.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autoHandoffs}
+            disabled={togglingAutoHandoffs}
+            onClick={toggleAutoHandoffs}
+            className={cn(
+              "relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50",
+              autoHandoffs ? "bg-accent" : "bg-raised"
+            )}
+          >
+            <span
+              className={cn(
+                "absolute top-1 size-4 rounded-full bg-white transition-transform",
+                autoHandoffs ? "translate-x-6" : "translate-x-1"
+              )}
+            />
+          </button>
+        </div>
+      </div>
+
       {/* App updates card */}
       <div className="rounded-2xl border border-hairline/50 bg-card p-6 shadow-sm">
         <div className="border-b border-hairline/40 pb-4">

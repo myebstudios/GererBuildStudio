@@ -24,6 +24,8 @@ export interface AppConfig {
   /** The person using the app (collected in onboarding, shown in the
    * sidebar). Not a secret — echoed back by GET /api/config. */
   profile?: { name?: string; email?: string };
+  /** Global setting for automatic bot-to-bot handoffs across multi-agent rooms. Defaults to true. */
+  autoHandoffs?: boolean;
   instances?: InstanceConfigMap;
 }
 
@@ -50,6 +52,7 @@ export function loadConfig(): AppConfig {
   cfg.composio = { key: process.env.COMPOSIO_KEY, ...cfg.composio };
   cfg.box = { token: process.env.BOX_TOKEN, ...cfg.box };
   cfg.trello = { key: process.env.TRELLO_API_KEY, ...cfg.trello };
+  cfg.autoHandoffs = cfg.autoHandoffs ?? true;
   return cfg;
 }
 
@@ -67,6 +70,9 @@ export function saveConfig(patch: Partial<AppConfig>): void {
     if (patch[key] && typeof patch[key] === "object") {
       disk[key] = { ...(disk[key] as object), ...patch[key] };
     }
+  }
+  if (typeof patch.autoHandoffs === "boolean") {
+    disk.autoHandoffs = patch.autoHandoffs;
   }
   if (patch.instances && typeof patch.instances === "object") {
     const diskInstances = { ...((disk.instances as InstanceConfigMap) ?? {}) };

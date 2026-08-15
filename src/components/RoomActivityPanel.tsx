@@ -157,7 +157,6 @@ export function RoomActivityPanel({
   onClose?: () => void;
   className?: string;
 }) {
-  const { dispatch } = useStore();
   const activity = useRoomActivity(group.threadId);
   const liveTimerNeeded = Boolean(group.busyBotId) || Object.values(activity).some((item) => item.status === "approval");
   const [now, setNow] = useState(Date.now());
@@ -197,21 +196,6 @@ export function RoomActivityPanel({
           </button>
         )}
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={group.autoHandoffs}
-          onClick={() => dispatch({ type: "patchGroup", groupId: group.id, patch: { autoHandoffs: !group.autoHandoffs } })}
-          className="mt-3 flex w-full items-center justify-between gap-3 rounded-lg bg-inset px-2.5 py-2 text-left"
-        >
-          <span>
-            <span className="block text-[11px] font-medium text-ink">Auto handoffs</span>
-            <span className="mt-0.5 block text-[10px] leading-4 text-ink-secondary">Agents may queue teammates they mention.</span>
-          </span>
-          <span className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors", group.autoHandoffs ? "bg-accent" : "bg-raised")}>
-            <span className={cn("absolute top-0.5 size-4 rounded-full bg-white transition-transform", group.autoHandoffs ? "translate-x-[18px]" : "translate-x-0.5")} />
-          </span>
-        </button>
       </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {ordered.length ? ordered.map((bot) => <AgentActivityCard key={bot.id} bot={bot} group={group} now={now} />) : (

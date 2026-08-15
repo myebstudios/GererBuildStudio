@@ -747,7 +747,8 @@ async function runGroupMemberTurn(
     const members = group.memberIds
       .map((id) => store.bot(id))
       .filter((b): b is NonNullable<typeof b> => Boolean(b) && b!.id !== bot.id);
-    for (const next of automaticHandoffBots(latestGroup.autoHandoffs, replyText, members)) {
+    const autoHandoffsEnabled = cfg.autoHandoffs ?? true;
+    for (const next of automaticHandoffBots(autoHandoffsEnabled, replyText, members)) {
       if (spoken.has(next.id)) continue;
       queueGroupResponders(groupId, [next.id]);
       await runGroupMemberTurn(groupId, next.id, hop + 1, spoken, epoch);
@@ -805,6 +806,7 @@ function configStatus() {
     trello: { keyConfigured: Boolean(cfg.trello?.key), configured: Boolean(cfg.trello?.token) },
     // not a secret — the sidebar shows it
     profile: { name: cfg.profile?.name ?? "", email: cfg.profile?.email ?? "" },
+    autoHandoffs: cfg.autoHandoffs ?? true,
   };
 }
 
@@ -1529,16 +1531,17 @@ const server = createServer(async (req, res) => {
     }
     if ((method === "PUT" || method === "PATCH") && path === "/api/config") {
       const body = await readBody(req);
-      const patch: Record<string, object> = {};
+      const patch: Record<string, unknown> = {};
       for (const key of ["xai", "composio", "box", "trello", "profile"] as const) {
         if (body[key] && typeof body[key] === "object") patch[key] = body[key];
       }
+      if (typeof body.autoHandoffs === "boolean") patch.autoHandoffs = body.autoHandoffs;
       if (!Object.keys(patch).length) return json(res, 400, { error: "nothing to save" });
       saveConfig(patch);
       Object.assign(cfg, loadConfig());
-      // provider keys change the fleet; a profile or Trello edit must not
+      // provider keys change the fleet; a profile, Trello, or autoHandoffs edit must not
       // kill in-flight turns with a pointless reload
-      if (Object.keys(patch).some((k) => k !== "profile" && k !== "trello")) await reloadProviders();
+      if (Object.keys(patch).some((k) => k !== "profile" && k !== "trello" && k !== "autoHandoffs")) await reloadProviders();
       const status = configStatus();
       broadcast({ kind: "config", ...status });
       return json(res, 200, status);

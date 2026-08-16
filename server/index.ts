@@ -1525,6 +1525,11 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { instances });
     }
 
+    // ── registered projects ──
+    if (method === "GET" && path === "/api/projects") {
+      return json(res, 200, { projects: readRegisteredProjects() });
+    }
+
     // ── app config (API keys — never echoed back, booleans only) ──
     if (method === "GET" && path === "/api/config") {
       return json(res, 200, configStatus());

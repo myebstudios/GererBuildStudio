@@ -273,7 +273,7 @@ function AddProjectModal({
 
 export function ProjectsScreen() {
   const projectsApi = window.gbs?.projects;
-  const { available, projects, error, refreshing, refresh, upsert, open } = useProjects();
+  const { projects, error, refreshing, refresh, upsert, open } = useProjects();
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
 
@@ -301,92 +301,91 @@ export function ProjectsScreen() {
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as CSSProperties}>
           <button
             onClick={() => void refresh(true)}
-            disabled={!available || refreshing}
+            disabled={refreshing}
             className="rounded-lg p-2 text-ink-secondary hover:bg-raised hover:text-ink disabled:opacity-40"
             title="Refresh projects"
           >
             <RefreshCw size={17} className={cn(refreshing && "animate-spin")} />
           </button>
-          <button
-            onClick={() => setAdding(true)}
-            disabled={!available}
-            className="flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-40"
-          >
-            <Plus size={16} /> Add project
-          </button>
+          {projectsApi && (
+            <button
+              onClick={() => setAdding(true)}
+              className="flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-[13px] font-medium text-white hover:brightness-110"
+            >
+              <Plus size={16} /> Add project
+            </button>
+          )}
         </div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-        {!available ? (
-          <div className="mx-auto mt-16 max-w-md rounded-2xl border border-hairline/50 bg-card p-8 text-center">
-            <FolderKanban size={32} className="mx-auto text-accent" />
-            <h2 className="mt-4 text-[16px] font-semibold text-ink">Open Projects in the desktop app</h2>
-            <p className="mt-2 text-[13px] leading-5 text-ink-secondary">
-              Browsers cannot safely choose, create, or clone local folders. Launch Gerer Build Studio through Electron to manage projects.
-            </p>
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-hairline/40 bg-panel px-3 py-2.5">
+            <Search size={16} className="text-ink-secondary" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search projects or paths"
+              aria-label="Search projects"
+              className="min-w-0 flex-1 bg-transparent text-[14px] text-ink placeholder:text-ink-secondary focus:outline-none"
+            />
           </div>
-        ) : (
-          <div className="mx-auto max-w-5xl">
-            <div className="mb-4 flex items-center gap-2 rounded-xl border border-hairline/40 bg-panel px-3 py-2.5">
-              <Search size={16} className="text-ink-secondary" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search projects or paths"
-                aria-label="Search projects"
-                className="min-w-0 flex-1 bg-transparent text-[14px] text-ink placeholder:text-ink-secondary focus:outline-none"
-              />
+
+          {error && (
+            <div className="mb-4 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" /> {error}
             </div>
+          )}
 
-            {error && (
-              <div className="mb-4 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger">
-                <AlertTriangle size={16} className="mt-0.5 shrink-0" /> {error}
-              </div>
-            )}
-
-            {projects === null ? (
-              <div className="flex items-center justify-center gap-2 py-20 text-[13px] text-ink-secondary">
-                <Loader2 size={16} className="animate-spin" /> Loading projects…
-              </div>
-            ) : projects.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-hairline bg-panel px-6 py-16 text-center">
-                <FolderPlus size={32} className="mx-auto text-ink-secondary" />
-                <h2 className="mt-4 text-[16px] font-semibold text-ink">Bring your first project in</h2>
-                <p className="mx-auto mt-2 max-w-sm text-[13px] leading-5 text-ink-secondary">
-                  Add an existing folder, create a fresh workspace, or clone a repository from GitHub.
-                </p>
+          {projects === null ? (
+            <div className="flex items-center justify-center gap-2 py-20 text-[13px] text-ink-secondary">
+              <Loader2 size={16} className="animate-spin" /> Loading projects…
+            </div>
+          ) : projects.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-hairline bg-panel px-6 py-16 text-center">
+              <FolderPlus size={32} className="mx-auto text-ink-secondary" />
+              <h2 className="mt-4 text-[16px] font-semibold text-ink">
+                {projectsApi ? "Bring your first project in" : "No registered projects found"}
+              </h2>
+              <p className="mx-auto mt-2 max-w-sm text-[13px] leading-5 text-ink-secondary">
+                {projectsApi
+                  ? "Add an existing folder, create a fresh workspace, or clone a repository from GitHub."
+                  : "Register project folders in Gerer Build Studio on your host machine to view them across the network."}
+              </p>
+              {projectsApi && (
                 <button
                   onClick={() => setAdding(true)}
                   className="mt-5 rounded-lg bg-raised px-4 py-2 text-[13px] font-medium text-ink hover:bg-raised-hover"
                 >
                   Add a project
                 </button>
-              </div>
-            ) : visibleProjects.length === 0 ? (
-              <div className="py-16 text-center text-[13px] text-ink-secondary">No projects match “{query}”.</div>
-            ) : (
-              <div className="grid gap-3 lg:grid-cols-2">
-                {visibleProjects.map((project) => (
-                  <article
-                    key={project.id}
-                    className={cn(
-                      "flex min-w-0 items-center gap-4 rounded-xl border bg-card p-4",
-                      project.missing ? "border-warning/35" : "border-hairline/50 hover:border-hairline",
-                    )}
-                  >
-                    <div className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl", project.missing ? "bg-warning/10 text-warning" : "bg-raised text-accent")}>
-                      {project.source === "github" ? <GitFork size={21} /> : <FolderOpen size={21} />}
+              )}
+            </div>
+          ) : visibleProjects.length === 0 ? (
+            <div className="py-16 text-center text-[13px] text-ink-secondary">No projects match “{query}”.</div>
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {visibleProjects.map((project) => (
+                <article
+                  key={project.id}
+                  className={cn(
+                    "flex min-w-0 items-center gap-4 rounded-xl border bg-card p-4",
+                    project.missing ? "border-warning/35" : "border-hairline/50 hover:border-hairline",
+                  )}
+                >
+                  <div className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl", project.missing ? "bg-warning/10 text-warning" : "bg-raised text-accent")}>
+                    {project.source === "github" ? <GitFork size={21} /> : <FolderOpen size={21} />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h2 className="truncate text-[14px] font-semibold text-ink">{project.name}</h2>
+                      <span className="shrink-0 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent">#{project.mention}</span>
+                      {project.missing && <span className="shrink-0 text-[11px] font-medium text-warning">Missing</span>}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <h2 className="truncate text-[14px] font-semibold text-ink">{project.name}</h2>
-                        <span className="shrink-0 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent">#{project.mention}</span>
-                        {project.missing && <span className="shrink-0 text-[11px] font-medium text-warning">Missing</span>}
-                      </div>
-                      <div className="mt-0.5 truncate text-[12px] text-ink-secondary" title={project.path}>{project.path}</div>
-                      <div className="mt-2 text-[11px] text-ink-secondary">{sourceLabel(project)}</div>
-                    </div>
+                    <div className="mt-0.5 truncate text-[12px] text-ink-secondary" title={project.path}>{project.path}</div>
+                    <div className="mt-2 text-[11px] text-ink-secondary">{sourceLabel(project)}</div>
+                  </div>
+                  {projectsApi && (
                     <button
                       onClick={() => void open(project).catch(() => undefined)}
                       disabled={project.missing}
@@ -395,12 +394,12 @@ export function ProjectsScreen() {
                     >
                       <ExternalLink size={17} />
                     </button>
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {adding && projectsApi && (

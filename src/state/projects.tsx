@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ProjectRecord } from "@/types/gbs";
+import { api } from "@/state/store";
 
 function projectErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -28,15 +29,25 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async (quiet = false) => {
-    if (!projectsApi) {
-      setProjects([]);
-      return;
-    }
     if (quiet) setRefreshing(true);
     else setProjects(null);
     setError(null);
     try {
-      setProjects(await projectsApi.list());
+      if (projectsApi) {
+        setProjects(await projectsApi.list());
+      } else {
+        const data = await api("/api/projects");
+        const list: ProjectRecord[] = (data.projects ?? []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          mention: p.mention,
+          path: p.path,
+          source: "existing",
+          addedAt: Date.now(),
+          missing: !p.available,
+        }));
+        setProjects(list);
+      }
     } catch (reason) {
       setError(projectErrorMessage(reason));
       setProjects([]);
@@ -50,7 +61,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const value = useMemo<ProjectsContextValue>(() => ({
-    available: Boolean(projectsApi),
+    available: true,
     projects,
     error,
     refreshing,

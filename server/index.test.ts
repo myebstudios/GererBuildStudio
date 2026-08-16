@@ -134,6 +134,10 @@ describe("harness HTTP API", () => {
     expect(listed.body.tasks).toContainEqual(expect.objectContaining({ id: created.body.task.id }));
     expect(Array.isArray(listed.body.projects)).toBe(true);
 
+    const projectsRes = await api("GET", "/api/projects");
+    expect(projectsRes.status).toBe(200);
+    expect(Array.isArray(projectsRes.body.projects)).toBe(true);
+
     const updatedFrame = nextTaskFrame("task.updated");
     const updated = await api("PATCH", `/api/tasks/${created.body.task.id}`, {
       revision: created.body.task.revision,

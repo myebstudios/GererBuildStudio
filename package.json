@@ -10,6 +10,7 @@
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "vite",
+    "dev:network": "vite --host 0.0.0.0",
     "dev:server": "node --experimental-strip-types server/index.ts",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "build": "tsc -b && tsc -p tsconfig.server.json && vite build",

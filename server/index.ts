@@ -1677,8 +1677,10 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`gerer-build-studio server on http://127.0.0.1:${PORT}`);
+const HOST = process.env.GBS_HOST || process.env.HOST || "0.0.0.0";
+
+server.listen(PORT, HOST, () => {
+  console.log(`gerer-build-studio server on http://${HOST}:${PORT}`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

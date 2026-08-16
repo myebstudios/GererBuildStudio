@@ -714,7 +714,8 @@ spoken = new Set(), epoch = groupQueueEpoch.get(groupId) ?? 0) {
         const members = group.memberIds
             .map((id) => store.bot(id))
             .filter((b) => Boolean(b) && b.id !== bot.id);
-        for (const next of automaticHandoffBots(latestGroup.autoHandoffs, replyText, members)) {
+        const autoHandoffsEnabled = cfg.autoHandoffs ?? true;
+        for (const next of automaticHandoffBots(autoHandoffsEnabled, replyText, members)) {
             if (spoken.has(next.id))
                 continue;
             queueGroupResponders(groupId, [next.id]);
@@ -773,6 +774,7 @@ function configStatus() {
         trello: { keyConfigured: Boolean(cfg.trello?.key), configured: Boolean(cfg.trello?.token) },
         // not a secret — the sidebar shows it
         profile: { name: cfg.profile?.name ?? "", email: cfg.profile?.email ?? "" },
+        autoHandoffs: cfg.autoHandoffs ?? true,
     };
 }
 function trelloCreds() {
@@ -1508,6 +1510,10 @@ const server = createServer(async (req, res) => {
             broadcast({ kind: "instances", instances });
             return json(res, 200, { instances });
         }
+        // ── registered projects ──
+        if (method === "GET" && path === "/api/projects") {
+            return json(res, 200, { projects: readRegisteredProjects() });
+        }
         // ── app config (API keys — never echoed back, booleans only) ──
         if (method === "GET" && path === "/api/config") {
             return json(res, 200, configStatus());
@@ -1519,13 +1525,15 @@ const server = createServer(async (req, res) => {
                 if (body[key] && typeof body[key] === "object")
                     patch[key] = body[key];
             }
+            if (typeof body.autoHandoffs === "boolean")
+                patch.autoHandoffs = body.autoHandoffs;
             if (!Object.keys(patch).length)
                 return json(res, 400, { error: "nothing to save" });
             saveConfig(patch);
             Object.assign(cfg, loadConfig());
-            // provider keys change the fleet; a profile or Trello edit must not
+            // provider keys change the fleet; a profile, Trello, or autoHandoffs edit must not
             // kill in-flight turns with a pointless reload
-            if (Object.keys(patch).some((k) => k !== "profile" && k !== "trello"))
+            if (Object.keys(patch).some((k) => k !== "profile" && k !== "trello" && k !== "autoHandoffs"))
                 await reloadProviders();
             const status = configStatus();
             broadcast({ kind: "config", ...status });
@@ -1670,8 +1678,9 @@ const server = createServer(async (req, res) => {
         });
     }
 });
-server.listen(PORT, "127.0.0.1", () => {
-    console.log(`gerer-build-studio server on http://127.0.0.1:${PORT}`);
+const HOST = process.env.GBS_HOST || process.env.HOST || "0.0.0.0";
+server.listen(PORT, HOST, () => {
+    console.log(`gerer-build-studio server on http://${HOST}:${PORT}`);
 });
 for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {

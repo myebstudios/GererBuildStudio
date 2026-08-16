@@ -29,6 +29,7 @@ export function loadConfig() {
     cfg.composio = { key: process.env.COMPOSIO_KEY, ...cfg.composio };
     cfg.box = { token: process.env.BOX_TOKEN, ...cfg.box };
     cfg.trello = { key: process.env.TRELLO_API_KEY, ...cfg.trello };
+    cfg.autoHandoffs = cfg.autoHandoffs ?? true;
     return cfg;
 }
 /** Merge a partial config into ~/.gbs/config.json (secrets never
@@ -46,6 +47,9 @@ export function saveConfig(patch) {
         if (patch[key] && typeof patch[key] === "object") {
             disk[key] = { ...disk[key], ...patch[key] };
         }
+    }
+    if (typeof patch.autoHandoffs === "boolean") {
+        disk.autoHandoffs = patch.autoHandoffs;
     }
     if (patch.instances && typeof patch.instances === "object") {
         const diskInstances = { ...(disk.instances ?? {}) };
